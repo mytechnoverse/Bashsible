@@ -36,7 +36,7 @@ Match Group *,!ssh_users
 
 
 
-https://wiki.nftables.org/wiki-nftables/index.php/Synproxy
+
 
 
 

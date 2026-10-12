@@ -1,6 +1,48 @@
 
 # Nginx :
 
+
+
+
+--with-stream_ssl_preread_module
+
+L4 SNI routing
+TLS Passthrough
+
+
+
+
+map $ssl_preread_server_name $name {
+    backend.example.com      backend;
+    default                  backend2;
+}
+
+upstream backend {
+    server 192.168.0.1:12345;
+    server 192.168.0.2:12345;
+}
+
+upstream backend2 {
+    server 192.168.0.3:12345;
+    server 192.168.0.4:12345;
+}
+
+server {
+    listen      12346;
+    proxy_pass  $name;
+    ssl_preread on;
+}
+
+
+
+
+
+
+
+
+
+
+
 ```bash
 dpkg-query --show --showformat='${Status}\n' nginx
 dpkg-query --show --showformat='${Version}\n' nginx

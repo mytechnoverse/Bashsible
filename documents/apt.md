@@ -1,11 +1,12 @@
 
 # Package Managment :
 
+```bash
 dpkg-query --show --showformat='${Status}\n' ca-certificates
 apt install ca-certificates
-
 dpkg-query --show --showformat='${Status}\n' gpgv
 apt install --no-install-recommends gpgv
+```
 
 ### Ubuntu 26 :
 
