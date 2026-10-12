@@ -1,0 +1,389 @@
+https://docs.podman.io/en/latest/markdown/podman-network-create.1.html
+
+podman host systemd-networkd .network file :
+
+[Match]
+Name=eth0
+
+[Network]
+DHCP=no
+IPv4Forwarding=yes
+IPv6Forwarding=yes
+
+[Address]
+Address=203.0.113.2/24
+Address=2000::2/64
+Address=2000::3/64
+
+[Route]
+Gateway=203.0.113.1
+Destination=0.0.0.0/0
+
+[Route]
+Gateway=2000::1
+Destination=::/0
+
+
+
+
+
+podman network create --driver ipvlan --subnet 10.100.0.0/24 -o parent=eth0 -o mode=l3 ipvlan-l3
+
+
+--ipam-driver=host-local
+--interface-name=
+--subnet=
+--gateway=
+--dns=
+
+
+--ipv6
+
+
+--internal
+
+
+
+
+
+
+[IPv6]
+DuplicateAddressDetection=none
+
+[Route]
+Destination=::/0
+Gateway=2001:db8:1::1
+
+[Route]
+Destination=0.0.0.0/0
+Gateway=192.168.1.1
+
+
+[Neighbor]
+Address=2001:db8:1::1
+LinkLayerAddress=00:11:22:33:44:55
+
+[Neighbor]
+Address=192.168.1.1
+LinkLayerAddress=00:11:22:33:44:55
+
+===============================================================================
+
+IPVLAN L3 Mode network per website
+
+Nginx Container IP : 10.0.0.2
+Database Container IP : 10.0.0.3
+Database Port : 5432
+
+table inet
+
+type filter hook ingress priority 0 policy drop :
+
+ip frag-off & 0x1fff != 0 drop
+ct state established,related accept
+tcp dport 443 tls sni "abc.com" dnat to 10.0.0.2:443
+tcp dport 443 tls sni "xyz.com" dnat to 10.0.1.2:443
+
+type filter hook forward priority 0 policy drop :
+
+ct state established,related accept
+ip saddr 10.0.0.2 ip daddr 10.0.0.3 tcp dport 5432 accept
+ip saddr 10.0.0.0/8 drop
+
+type filter hook input priority 0 policy drop :
+
+iif lo accept
+ct state established,related accept
+ip saddr 10.0.0.0/8 drop
+
+===============================================================================
+
+IPv6 Public Range : 2000::/3
+
+IPv6 Loopback : ::1/128
+IPv4 Loopback Range : 127.0.0.0/8
+
+IPv4 Documentation :
+
+192.0.2.0/24
+198.51.100.0/24
+203.0.113.0/24
+
+IPv4 CGNAT :
+
+100.64.0.0/10
+
+IPv4 Reserved :
+
+240.0.0.0/4
+
+
+IPv4 Private Ranges :
+
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+
+IPv6 Private Range : fc00::/7
+
+IPv4 Multicast Range : 224.0.0.0/4
+IPv6 Multicast Range : ff00::/8
+
+
+IPv6 Link Local Range : fe80::/10
+IPv4 Link Local Range : 169.254.0.0/16
+
+===============================================================================
+
+8 bit host id network for each website ( 256 addresses )
+
+10.0.0.0/8
+
+10.0.0.0 - 10.255.255.255
+
+10.0.0.1 - 10.0.0.254
+
+10.0.0.0 , 10.0.1.0 , 10.0.2.0 , 10.0.3.0 , ... 
+
+fd00::/104
+
+fd:: - fd::ff:ffff
+
+00:0001 - 00:00fe
+
+00:0000 , 00:0100 , 00:0200 , 00:0300 , ...
+
+===============================================================================
+
+
+
+
+
+
+
+
+the dns AAAA ipv6 dst address = ipv4 sni  
+
+
+
+
+
+
+
+IPv6 : HTTP2 + HTTP3 , each website with its own ipv6 AAAA record 
+IPv4 : HTTP2 ONLY ( TCP + TLS 1.3 ) , nftables tls sni routing for DNAT
+
+Each website should have its own ipv6 AAAA and its own set of Nginx , Database , ... containers
+
+
+Nftables
+
+https://wiki.nftables.org/wiki-nftables/index.php/Load_balancing
+
+Families : ip ( ipv4 ) , ip6 ( ipv6 ) , inet ( dual stack ) , bridge , arp ( ipv4 )
+
+Traffic for every address family and hook is allowed unless there is a chain defined at that hook for a table with that address family .
+priorities define ordering for chains in scope of a specifc hook .
+Block fragmentation at Ingress hook to be able to use dport directive .
+
+============================================================================================================
+
+Router ARP Block :
+
+=== IPv4 :
+
+table arp chain type filter hook forward priority 0 policy drop
+
+=== IPv6 :
+
+table inet chain type filter hook forward priority 0
+meta l4proto ipv6-icmp icmpv6 type { 135, 136 } drop
+
+============================================================================================================
+
+Router Ping :
+
+table inet chain type filter hook forward priority 0
+
+====== IPv4 :
+--- Ping Req   : ip protocol icmp icmp type 8 { accept | drop }
+--- Ping Reply : ip protocol icmp icmp type 0 { accept | drop }
+
+====== IPv6 :
+--- Ping Req    : meta l4proto ipv6-icmp icmpv6 type 128 { accept | drop }
+--- Ping Resply : meta l4proto ipv6-icmp icmpv6 type 129 { accept | drop }
+
+============================================================================================================
+
+Router NAT :
+
+table inet 
+
+====== Destination ( Nginx Request ) :
+
+type nat hook prerouting priority start at -100
+
+--- IPv4 :
+{ tcp | udp } dport { ORG PORT } dnat to { NATED ADDR }:{ NATED PORT }
+--- IPv6 :
+{ tcp | udp } dport { ORG PORT } dnat to [{ NATED ADDR }]:{ NATED PORT }
+
+====== Source ( Nginx Response ) :
+
+type nat hook postrouting priority start at 100 :
+
+--- IPv4 :
+ip daddr { NATED ADDR } { tcp | udp } dport { NATED PORT } snat to { ORG ADDR }
+--- IPv6 :
+ip6 daddr { NATED ADDR } { tcp | udp } dport { NATED PORT } snat to { ORG ADDR }
+
+====== NAT Filtering :
+
+type filter hook forward priority start at 0 :
+
+ct state established,related accept
+
+--- IPv4 :
+ip daddr { NATED ADDR } { tcp | udp } dport { NATED PORT } accept
+--- IPv6 :
+ip6 daddr { NATED ADDR } { tcp | udp } dport { NATED PORT } accept
+
+============================================================================================================
+
+Direct Server Return ( DSR ) :
+
+Nginx should have the Router IP on a loopback interface
+ARP Request and Responses Should be blocked in backend
+
+No connection Tracking is done in DSR 
+
+
+NAT Layer 3 Flow IP Addresses :
+
+1. Client -> Router : src client , dst router
+2. Router -> Server : src client , dst server ( DNAT )
+3. Server -> Router : src server , dst router
+4. Router -> Client : src router , dst client ( SNAT )
+
+DSR Layer 3 Flow IP Addresses :
+
+1. Client -> Router : src client , dst router
+2. Router -> Server : src client , 
+
+DSR Layer 2 Flow MAC Addresses :
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DOS Defense , Fragments Drop :
+
+
+
+table inet type filter hook ingress device { Interface Name } priority start at 0
+
+ip frag-off & 0x3fff != 0 drop
+exthdr frag exists drop
+
+
+
+
+
+
+Policy Filtering Chain : type filter hook { input | output | forward } priority start at 0
+
+inet address family hooks :
+
+Routing Hooks Flow :
+
+1. ingress
+2. prerouting
+3. forward
+4. postrouting
+
+Nginx Requests Hooks Flow :
+
+1. ingress
+2. prerouting
+3. input
+
+Nginx Responses Hooks Flow :
+
+1. output 
+2. postrouting
+
+Curl Hooks Flow :
+
+1. output 
+2. postrouting
+
+
+
+
+
+
+
+table family : inet
+
+chain type : filter
+hook : input
+priority 0
+policy : drop
+
+iif lo accept
+ct state invalid drop
+ct state established,related accept
+tcp dport 22 ct state new accept
+tcp dport 443 ct state new accept
+ip protocol icmp accept
+ip6 nexthdr ipv6-icmp accept
+
+chain type : filter
+hook : forward
+priority 0
+policy : drop
+
+chain type : filter
+hook : output
+priority 0
+policy : accept
+
+
+Systemd-networkd .network file static arp entry :
+
+[Neighbor]
+Address=192.168.1.1
+LinkLayerAddress=aa:bb:cc:dd:ee:ff
+
+Running Config Save :
+
+ --numeric-priority
+
+sudo nft -y list ruleset | sudo tee /etc/nftables.conf >/dev/null
+
+Troubleshooting :
+
+sudo nft -y -a
+
+Automation : nft -y -a -j 
+
+nft list tables [ Family Name ]
+nft list table [ Family Name ] { Table Name }
+nft { add | delete } table [ Family Name ] { Table Name }
+
+
+

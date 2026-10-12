@@ -1,0 +1,35 @@
+
+
+
+what netplan generated :
+
+ls /run/systemd/network/
+
+networkctl cat eth0
+
+systemd-analyze cat-config systemd/network/10-netplan-eth0.network
+
+
+networkctl list
+networkctl reload
+networkctl reconfigure eth0
+
+
+
+the hypervisor host :
+
+IPv4Forwarding=
+IPv6Forwarding=
+IPMasquerade=
+IPv4ProxyARP=
+IPv6ProxyNDP=
+
+??????
+
+
+
+
+
+
+
+

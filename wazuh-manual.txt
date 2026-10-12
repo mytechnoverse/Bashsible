@@ -1,0 +1,47 @@
+
+====== Ubuntu Setup :
+
+nano /etc/apt/sources.list.d/ubuntu.sources :
+
+Types: deb
+URIs: https://archive.ubuntu.com/ubuntu/
+Suites: resolute resolute-updates
+Components: main universe
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+Types: deb
+URIs: https://security.ubuntu.com/ubuntu/
+Suites: resolute-security
+Components: main universe
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+apt update
+apt upgrade
+
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp
+ufw enable
+ufw status
+
+
+apt install curl ca-certificates
+
+apt install musl-tools build-essential perl libtext-template-perl
+
+curl -L -o openssl.tar.gz https://github.com/openssl/openssl/releases/download/openssl-4.0.2/openssl-4.0.2.tar.gz
+
+mkdir openssl
+tar -x --strip-components=1 --directory ./openssl -f openssl.tar.gz
+
+CC=musl-gcc CFLAGS=-O2 LDFLAGS=-static CPPFLAGS='-idirafter /usr/include -idirafter /usr/include/x86_64-linux-gnu' \
+./openssl/Configure --prefix=/nonexistent --openssldir=/nonexistent linux-x86_64 no-shared no-module no-async no-dso -static
+
+cpu_core_count=$(nproc)
+make --jobs $cpu_core_count
+strip --strip-all ./openssl-4.0.2/Configure/apps/openssl
+mv ./openssl-4.0.2/Configure/apps/openssl /usr/local/bin/local-openssl
+rm -r ./openssl-4.0.2/
+
+curl -L -o yq-go.tar.gz https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_linux_amd64.tar.gz
+tar -x -f 

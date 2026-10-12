@@ -1,0 +1,1813 @@
+
+
+Wazuh Recommended Hardware Specs :
+Indexer : 16 GB RAM , 8 vCPU
+manager : 4 GB RAM , 8 vCPU
+dashboard : 8 GB RAM , 4 vCPU
+
+
+ubuntu at least 64 GB :
+
+lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+
+https://packages.wazuh.com/4.14/wazuh-install.sh
+bash ./wazuh-install.sh -a
+
+nano /var/ossec/etc/ossec.conf :
+
+<logall_json>yes</logall_json>
+
+<remote>
+  <connection>syslog</connection>
+  <port>514</port>
+  <protocol>tcp</protocol>
+  <allowed-ips>0.0.0.0/0</allowed-ips>
+</remote>
+
+<syscheck>
+  <disabled>yes</disabled>
+</syscheck>
+
+<rootcheck>
+  <disabled>yes</disabled>
+</rootcheck>
+
+<sca>
+  <enabled>no</enabled>
+</sca>
+
+<vulnerability-detection>
+  <enabled>no</enabled>
+</vulnerability-detection>
+
+
+
+sudo systemctl restart wazuh-manager
+
+/etc/filebeat/filebeat.yml :
+
+archives:
+enabled: true
+
+systemctl restart filebeat
+
+Dashboard management > Dashboard Management -> Index Patterns -> Create index pattern -> Name : ( wazuh-archives-* ) -> Next Step -> Time : ( timestamp ) -> Create Index Pattern
+
+Explore -> Discover -> ( wazuh-archives-* )
+
+ufw allow 514/tcp
+
+sudo ss -tlnp | grep 514
+
+logger -n $ip -P 514 -T "test syslog message from client"
+
+tail -f /var/ossec/logs/archives/archives.json
+
+cat /var/ossec/logs/archives/archives.json | jq '.location'
+
+clients logs only : 
+
+Dashboard DQL: not location: "/var/*"
+
+log properties :
+
+useless props :
+agent.*
+
+
+
+
+location : client ip
+predecoder.hostname : client hostname
+
+
+predecoder.program_name : syslog request header field
+decoder.name : wazuh decoder name
+
+data.* : structured fields extracted by the ( decoder.name )
+
+
+
+
+manager.name : wazuh manager hostname
+
+--------------------------------------------------------------------------------
+debian client rsyslog setup :
+
+apt-get install rsyslog
+
+systemctl status rsyslog
+
+60 ?????
+
+nano /etc/rsyslog.d/60-wazuh-forward.conf :
+
+auth,authpriv.* action(
+  type="omfwd"
+  target="${wazuh_manager_ip}"
+  port="514"
+  protocol="tcp"
+  queue.type="LinkedList"
+  queue.filename="wazuh_fwd"
+  queue.maxDiskSpace="1g"
+  queue.saveOnShutdown="on"
+  action.resumeRetryCount="-1"
+  action.resumeInterval="10"
+)
+
+rsyslogd -N1
+
+systemctl restart rsyslog
+
+
+--------------------------------------------------------------------------------
+
+
+
+
+
+
+script on Debian ( software-properties-common ) error : apt -y install python3-apt tar
+
+https://pro.shecan.ir/dns-query
+
+https://documentation.wazuh.com/current/user-manual/index.html
+
+
+
+https://documentation.wazuh.com/current/installation-guide/packages-list.html
+
+Indexer :
+https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-indexer/wazuh-indexer_4.14.7-1_amd64.deb
+
+Manager :
+https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-manager/wazuh-manager_4.14.7-1_amd64.deb
+
+FileBeat :
+https://packages.wazuh.com/4.x/apt/pool/main/f/filebeat/filebeat_7.10.2-2_amd64.deb
+
+Dashboard :
+https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-dashboard/wazuh-dashboard_4.14.7-1_amd64.deb
+
+Alerts Template :
+https://raw.githubusercontent.com/wazuh/wazuh/v4.14.7/extensions/elasticsearch/7.x/wazuh-template.json
+
+wazuh 4.14.7
+java 21.0.10
+opensearch 2.19.5
+opensearch dashboards 2.19.5
+filebeat 7.10.2
+openssl 3.5.6
+
+sha256 derived key is 32 Byte represented as 64 Hex characters
+
+opensearch jvm memory limit should be set to half of VM / Container RAM
+each wazuh indexer could use up to 32 GB RAM maximum
+
+each wazuh manager needs at least 2 GB RAM
+
+1 central wazuh indexer and dashboard
+1 wazuh server ( manager + filebeat ) in each site
+
+Cisco Switches : syslog over TCP Port 514
+Fortiweb , Fortigate : syslog over TLS TCP Port 6514
+Windows : NXLOG | Fluent Bit | Solarwinds
+
+wazuh manager supports syslog over tcp
+nginx adds syslog over tls support ( tls tcp port 6514 -> tcp port 514 ) but could forward to only one syslog server
+rsyslog adds syslog over tls support ( tls tcp port 6514 -> tcp port 514 ) and also adds syslog routing to multiple syslog servers 
+
+client --( syslog over tls over tcp )--> { rsyslog | nginx } --( syslog over tcp )--> wazuh
+
+PKCS8 only supports encryption only ( aes 256 cbc )
+PKCS12 supports encryption ( aes 256 cbc ) and integrity checking ( hmac sha256 )
+
+
+use ( su --login ) to switch to root user
+
+
+jq :
+
+https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64
+
+yq :
+
+https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_linux_amd64
+
+gawk :
+
+apt install musl-tools build-essential xz-utils
+
+https://ftp.gnu.org/gnu/gawk/gawk-5.4.1.tar.xz
+
+export CC="musl-gcc"
+export CFLAGS="-O2"
+export LDFLAGS="-static"
+./configure --disable-nls --disable-extensions --disable-rpath --without-mpfr --without-readline --without-libintl
+make -j$(nproc)
+strip --strip-all ./gawk
+ldd ./gawk
+
+openssl 4.x.x compilation :
+
+https://github.com/openssl/openssl/releases/download/openssl-4.0.1/openssl-4.0.1.tar.gz
+
+apt install musl-tools build-essential perl libtext-template-perl
+CC=musl-gcc CFLAGS=-O2 LDFLAGS=-static ./Configure linux-x86_64 no-shared no-module no-async no-dso 
+
+CPPFLAGS='-idirafter /usr/include -idirafter /usr/include/x86_64-linux-gnu'
+
+make -j$(nproc)
+strip --strip-all ./apps/openssl
+ldd ./apps/openssl
+
+----------------------------------------------------------------------------------------------------------------------------
+
+curl
+ca-certificates
+
+jq
+gawk
+
+bash-completion
+nftables
+
+iproute2
+iputils-ping
+iputils-tracepath
+bind9-dnsutils
+
+openssl
+chrony
+
+gpgv
+debian-archive-keyring
+
+--no-install-recommends gpg
+
+openssh-server
+
+
+
+
+essential deb packages :
+
+dpkg-query -W -f='${binary:Package} ${Essential}\n' | awk '$2 == "yes" {print $1}' | sort -u
+
+base-files
+base-passwd
+bash
+bsdutils
+coreutils
+dash
+debianutils
+diffutils
+dpkg
+findutils
+grep
+gzip
+hostname
+init-system-helpers
+libc-bin
+ncurses-base
+ncurses-bin
+perl-base
+sed
+sysvinit-utils
+tar
+util-linux
+
+apt-cache depends --recurse --important --installed $(dpkg-query -W -f='${binary:Package} ${Essential}\n' | awk '$2 == "yes" {print $1}') \
+| awk '/^[[:alnum:]][^ ]*$/ {print $1}' | sort -u | grep -Fvx -f <(dpkg-query -W -f='${binary:Package} ${Essential}\n' | awk '$2 == "yes" {print $1}')
+
+debconf
+gcc-14-base
+libacl1
+libattr1
+libaudit1
+libaudit-common
+libblkid1
+libbz2-1.0
+libc6
+libcap2
+libcap-ng0
+libcrypt1
+libdb5.3t64
+libdebconfclient0
+libgcc-s1
+libgmp10
+liblastlog2-2
+liblzma5
+libmd0
+libmount1
+libpam0g
+libpam-modules
+libpam-modules-bin
+libpam-runtime
+libpcre2-8-0
+libselinux1
+libsmartcols1
+libsqlite3-0
+libssl3t64
+libsystemd0
+libtinfo6
+libudev1
+libuuid1
+libzstd1
+openssl-provider-legacy
+zlib1g
+
+=========================================================================================================================================================================
+
+filebeat archives should be true when server logall is enabled 
+
+opensearch configuration notes :
+
+set your ip address in network.host
+node.name: certificate CN
+plugins.security.nodes_dn : certificate CN
+block port 9300 on that ip using firewall
+only filebeat needs CA but specifying ssl certificate , key , ca config for transport and http is mandatory
+comment ( cluster.* ) directives from the file
+
+==========================================================================================================================================================================
+
+====== Nginx Reverse Proxy :
+
+add 127.0.0.1 to wazuh manager allowed ips if using nginx as tls termination solution for wazuh manager
+
+apt-get install curl ca-certificates file
+apt-get install --no-install-recommends gpg
+
+debian_version_name=$(source /etc/os-release && echo "$VERSION_CODENAME")
+
+package_name='nginx'
+
+apt_repo_name='nginx'
+apt_repo_key_url='https://nginx.org/keys/nginx_signing.key'
+apt_repo_url='https://nginx.org/packages/debian/'
+apt_repo_suite=$debian_version_name
+apt_repo_component='nginx'
+apt_repo_origin='nginx'
+
+apt_repo_key_path="/etc/apt/keyrings/${apt_repo_name}-archive-keyring.pgp"
+[[ -f $apt_repo_key_path ]] || touch $apt_repo_key_path
+[[ $(stat -c '%U %G' $apt_repo_key_path) == "root root" ]] || chown root:root $apt_repo_key_path
+[[ $(stat -c '%a' $apt_repo_key_path) == 644 ]] || chmod 644 $apt_repo_key_path
+
+apt_repo_key=$(curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --url "$apt_repo_key_url")
+apt_repo_key_dearmor_path=$(mktemp)
+gpg --output $apt_repo_key_dearmor_path --dearmor <(printf '%s' "$apt_repo_key") || printf '%s\n' "error"
+
+apt_repo_key_is_invalid=0
+if [[ $(file --brief --mime-type $apt_repo_key_path) != text/* ]]
+then
+  read -r apt_repo_key_header < <(printf '%s\n' "$apt_repo_key")
+  if [[ "$apt_repo_key_header" =~ ^-----BEGIN[[:space:]]PGP[[:space:]]PUBLIC[[:space:]]KEY[[:space:]]BLOCK-----$ ]]
+  then
+    read -r apt_repo_key_digest _ < <(sha256sum $apt_repo_key_dearmor_path)
+    sha256sum --check --status <(printf '%s  %s\n' $apt_repo_key_digest $apt_repo_key_path) || apt_repo_key_is_invalid=1
+  else
+    apt_repo_key_is_invalid=1
+  fi
+else
+  apt_repo_key_is_invalid=1
+fi
+(( apt_repo_key_is_invalid )) && cat $apt_repo_key_dearmor_path > $apt_repo_key_path
+
+
+
+
+apt_repo_sources_path="/etc/apt/sources.list.d/${apt_repo_name}.sources"
+
+read -r -d $'\x1c' apt_repo_sources <<-EOF
+	Types: deb
+	URIs: $apt_repo_url
+	Suites: $apt_repo_suite
+	Components: $apt_repo_component
+	Signed-By: $apt_repo_public_key_path
+$(printf '\x1c')
+EOF
+
+[[ -f $apt_repo_sources_path ]] || touch $apt_repo_sources_path
+[[ $(stat -c '%U %G' $apt_repo_sources_path) == "root root" ]] || chown root:root $apt_repo_sources_path
+[[ $(stat -c '%a' $apt_repo_sources_path) == 644 ]] || chmod 644 $apt_repo_sources_path
+
+printf '%s\n' "$apt_repo_sources" > $apt_repo_sources_path
+
+apt_repo_packages_file_path=$(apt-get indextargets --format '$(FILENAME)' "Repo-URI: ${apt_repo_url}" "Created-By: Packages")
+apt_repo_packages_file="$(/usr/lib/apt/apt-helper cat-file $apt_repo_packages_file_path)"
+
+declare -A packages_dictionary
+apt_repo_preferences_packages=''
+
+while read -r -d $'\n' this_line
+do
+	[[ $this_line =~ ^Package:[[:space:]](.*)$ ]] && {
+		package_name=${BASH_REMATCH[1]}
+		[[ -v packages_dictionary[$package_name] ]] || {
+			apt_repo_preferences_packages+="${package_name} "
+			packages_dictionary[$package_name]=''
+		}
+	}
+done < <(printf '%s\n' "$apt_repo_packages_file")
+
+read -r -d $'\x1c' apt_repo_preferences <<-EOF
+	Package: $apt_repo_preferences_packages
+	Pin: release o=${apt_repo_origin},a=${apt_repo_suite}
+	Pin-Priority: 900
+$(printf '\x1c')
+EOF
+
+apt_repo_preferences_path="/etc/apt/preferences.d/${apt_repo_name}.pref"
+
+[[ -f $apt_repo_preferences_path ]] || touch $apt_repo_preferences_path
+[[ $(stat -c '%U %G' $apt_repo_preferences_path) == "root root" ]] || chown root:root $apt_repo_preferences_path
+[[ $(stat -c '%a' $apt_repo_preferences_path) == 644 ]] || chmod 644 $apt_repo_preferences_path
+
+printf '%s\n' "$apt_repo_preferences" > $apt_repo_preferences_path
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[[ $(dpkg-query --show --showformat='${Status}' $package_name) == 'install ok installed' ]] && {
+  package_upstream_version=$(dpkg-query --show --showformat='${Version}' $package_name)
+  [[ $package_upstream_version =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+~${apt_repo_suite}$ ]] || {
+    DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 --assume-yes purge $package_name
+    DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 --assume-yes autoremove
+  }
+}
+
+.pref file check :
+
+readarray -t package_policy_output < <(apt-cache policy $package_name)
+output_line_count=${#package_policy_output[@]}
+package_prefered_repo_url=''
+for (( output_line_index = 0 ; output_line_index < output_line_count ; output_line_index++ ))
+do
+  this_line=${package_policy_output[output_line_index]}
+  [[ "$this_line" == *'Candidate:'* ]] && {
+    target_line_index=$((output_line_index + 3))
+    target_line=${package_policy_output[$target_line_index]}
+    read -r -d $'\n' -a target_line_fields <<< "$target_line"
+    package_prefered_repo_url=${target_line_fields[1]}
+    break
+  }
+done
+[[ $package_prefered_repo_url == $apt_repo_url ]] || printf '%s\n' "error"
+
+
+
+
+
+
+
+
+
+
+
+[[ $(dpkg-query --show --showformat='${Status}' $package_name) == 'install ok installed' ]] || {
+  apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update || printf '%s\n' "error"
+  DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+}
+
+nginx_prefix='/etc/nginx/'
+nginx_main_config_file_path='/etc/nginx/nginx.conf'
+
+nginx_directive_include_stream_present=false
+while read -r -d $'\n' this_line
+do
+	[[ $this_line =~ ^[[:space:]]*include[[:space:]]/etc/nginx/stream\.d/\*\.conf[[:space:]]*\;[[:space:]]*$ ]] && {
+    nginx_directive_include_stream_present=true
+    break
+  }
+done < $nginx_main_config_file_path
+
+[[ $nginx_directive_include_stream_present == true ]] || {
+  read -r -d $'\x1c' nginx_config_block_stream <<-EOF
+    stream {
+      include /etc/nginx/stream.d/*.conf;
+    }
+  $(printf '\x1c')
+  EOF
+  printf '%s\n' "$nginx_config_block_stream" >> $nginx_main_config_file_path
+} 
+
+nginx_stream_config_files_prefix="${nginx_prefix}stream.d/"
+
+[[ -d $nginx_stream_config_files_prefix ]] || mkdir $nginx_stream_config_files_prefix
+[[ $(stat -c '%U %G' $nginx_stream_config_files_prefix) == "root root" ]] || chown root:root $nginx_stream_config_files_prefix
+[[ $(stat -c '%a' $nginx_stream_config_files_prefix) == 755 ]] || chmod 755 $nginx_stream_config_files_prefix
+
+nginx_tls_prefix="${nginx_prefix}tls/"
+
+[[ -d $nginx_tls_prefix ]] || mkdir $nginx_tls_prefix
+[[ $(stat -c '%U %G' $nginx_tls_prefix) == "root root" ]] || chown root:root $nginx_tls_prefix
+[[ $(stat -c '%a' $nginx_tls_prefix) == 700 ]] || chmod 700 $nginx_tls_prefix
+
+nginx_service_name='syslog'
+nginx_service_listen_ip='172.16.1.2'
+nginx_service_listen_port='6514'
+nginx_service_upstream_ip='127.0.0.1'
+nginx_service_upstream_port='514'
+
+nginx_service_tls_prefix="${nginx_tls_prefix}${nginx_service_name}/"
+
+[[ -d $nginx_service_tls_prefix ]] || mkdir $nginx_service_tls_prefix
+[[ $(stat -c '%U %G' $nginx_service_tls_prefix) == "root root" ]] || chown root:root $nginx_service_tls_prefix
+[[ $(stat -c '%a' $nginx_service_tls_prefix) == 700 ]] || chmod 700 $nginx_service_tls_prefix
+
+nginx_service_tls_crt_path="${nginx_service_tls_prefix}${nginx_service_name}.crt"
+
+[[ -f $nginx_service_tls_crt_path ]] || touch $nginx_service_tls_crt_path
+[[ $(stat -c '%U %G' $nginx_service_tls_crt_path) == "root root" ]] || chown root:root $nginx_service_tls_crt_path
+[[ $(stat -c '%a' $nginx_service_tls_crt_path) == 644 ]] || chmod 644 $nginx_service_tls_crt_path
+
+nginx_service_tls_key_path="${nginx_service_tls_prefix}${nginx_service_name}.key"
+
+[[ -f $nginx_service_tls_key_path ]] || touch $nginx_service_tls_key_path
+[[ $(stat -c '%U %G' $nginx_service_tls_key_path) == "root root" ]] || chown root:root $nginx_service_tls_key_path
+[[ $(stat -c '%a' $nginx_service_tls_key_path) == 600 ]] || chmod 600 $nginx_service_tls_key_path
+
+nginx_service_tls_pass_path="${nginx_service_tls_prefix}${nginx_service_name}.pass"
+
+[[ -f $nginx_service_tls_pass_path ]] || touch $nginx_service_tls_pass_path
+[[ $(stat -c '%U %G' $nginx_service_tls_pass_path) == "root root" ]] || chown root:root $nginx_service_tls_pass_path
+[[ $(stat -c '%a' $nginx_service_tls_pass_path) == 600 ]] || chmod 600 $nginx_service_tls_pass_path
+
+nginx_service_listen_socket="${nginx_service_listen_ip}:${nginx_service_listen_port}"
+nginx_service_upstream_socket="${nginx_service_upstream_ip}:${nginx_service_upstream_port}"
+
+read -r -d $'\x1c' nginx_service_stream_config_file <<-EOF
+	server {
+		listen ${nginx_service_listen_socket} ssl;
+		proxy_pass ${nginx_service_upstream_socket};
+		ssl_certificate ${nginx_service_tls_crt_path};
+		ssl_certificate_key ${nginx_service_tls_key_path};
+		ssl_password_file ${nginx_service_tls_pass_path};
+		ssl_verify_client off;
+		ssl_protocols TLSv1.2 TLSv1.3;
+		ssl_conf_command Ciphersuites TLS_AES_128_GCM_SHA256;
+		ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256;
+		ssl_ecdh_curve X25519:prime256v1;
+	}
+$(printf '\x1c')
+EOF
+
+nginx_service_stream_config_file_path="${nginx_stream_config_files_prefix}${nginx_service_name}.conf"
+
+[[ -f $nginx_service_stream_config_file_path ]] || touch $nginx_service_stream_config_file_path
+[[ $(stat -c '%U %G' $nginx_service_stream_config_file_path) == "root root" ]] || chown root:root $nginx_service_stream_config_file_path
+[[ $(stat -c '%a' $nginx_service_stream_config_file_path) == 644 ]] || chmod 644 $nginx_service_stream_config_file_path
+
+printf '%s\n' "$nginx_service_stream_config_file" > $nginx_service_stream_config_file_path
+
+====== Wazuh Repo :
+
+apt-get install curl ca-certificates
+apt-get install --no-install-recommends gpg
+
+apt_repo_name='wazuh'
+apt_repo_public_key_url='https://packages.wazuh.com/key/GPG-KEY-WAZUH'
+apt_repo_public_key_path="/etc/apt/keyrings/${apt_repo_name}-archive-keyring.pgp"
+apt_repo_url='https://packages.wazuh.com/4.x/apt/'
+apt_repo_suite='stable'
+apt_repo_component='main'
+apt_repo_sources_path="/etc/apt/sources.list.d/${apt_repo_name}.sources"
+
+apt_repo_public_key=$(curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --url "$apt_repo_public_key_url")
+read -r -d $'\n' apt_repo_public_key_header < <(printf '%s\n' "$apt_repo_public_key")
+[[ "$apt_repo_public_key_header" =~ ^-----BEGIN[[:space:]]PGP[[:space:]]PUBLIC[[:space:]]KEY[[:space:]]BLOCK-----$ ]] || printf '%s\n' "error"
+
+gpg --output $apt_repo_public_key_path --dearmor <(printf '%s' "$apt_repo_public_key")
+chown root:root $apt_repo_public_key_path
+chmod 644 $apt_repo_public_key_path
+read -r -d $'\x1c' apt_repo_sources <<-EOF
+	Types: deb
+	URIs: $apt_repo_url
+	Suites: $apt_repo_suite
+	Components: $apt_repo_component
+	Signed-By: $apt_repo_public_key_path
+$(printf '\x1c')
+EOF
+
+printf '%s\n' "$apt_repo_sources" > $apt_repo_sources_path
+chown root:root $apt_repo_sources_path
+chmod 644 $apt_repo_sources_path
+
+package_name=''
+
+[[ $(dpkg-query --show --showformat='${Status}' $package_name) == 'install ok installed' ]] || {
+  apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update || printf '%s\n' "error"
+  DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+}
+
+tls_server_ip='172.16.1.2'
+tls_service_port='6514'
+tls_service_sni='wazuh-manager-01.internal'
+tls_certificate_san='wazuh-manager-01.internal'
+ca_bundle_path=''
+
+timeout 3s openssl s_client -4 -no-interactive -quiet -verify_return_error -connect $tls_server_ip:$tls_service_port -servername $tls_service_sni -verify_hostname $tls_certificate_san -verifyCAfile $ca_bundle_path -tls1_2 -no_ign_eof </dev/null
+timeout 3s openssl s_client -4 -no-interactive -quiet -verify_return_error -connect $tls_server_ip:$tls_service_port -servername $tls_service_sni -verify_hostname $tls_certificate_san -verifyCAfile $ca_bundle_path -tls1_3 -no_ign_eof </dev/null
+
+
+( -tls1_2 -cipher ECDHE-ECDSA-AES128-GCM-SHA256 )
+( -tls1_3 -ciphersuites TLS_AES_128_GCM_SHA256 )
+
+fortiweb :
+
+( fortiweb CA verification and tls 1.3 needs version 8.x.x )
+( server can only be specifed by ip address in fortiweb )
+
+show log syslog-policy
+
+config log syslog-policy
+  edit "wazuh"
+    config syslog-server-list
+      edit 0
+        set port 6514
+        set server "172.16.1.2"
+        set tls enable
+      end
+  next
+end
+
+show log syslogd
+
+config log syslogd
+  set status enable
+  set facility local1
+  set policy "wazuh"
+end
+
+fortigate :
+
+( fortigate verifies CA but tls 1.3 is not supported )
+( specify syslog server with domain name and configure dns server in fortigate )
+
+import wazuh CA certificate as remote CA certificate in following path : ( System -> Certificates )
+
+show vpn certificate ca
+
+config vpn certificate ca
+  rename {} to wazuh_ca
+end
+
+config system dns
+  set primary 172.16.0.1
+  set secondary 172.16.0.2
+end
+
+config log syslogd setting
+  set enc-algorithm high
+  set facility local0
+  set format default
+  set mode reliable
+  set port 6514
+  set server "wazuh-server-01.internal"
+  set ssl-min-proto-version TLSv1-2
+  set status enable
+end
+
+
+
+
+
+
+
+
+
+===================================================================================================================================================================================================
+
+Indexer Install :
+
+
+
+
+
+
+ntp_server_domain='ntp.internal' 
+
+
+
+read -r -d $'\n' ntp_server_ip _ < <(getent ahostsv4 $ntp_server_domain || printf '%s\n' "error")
+
+
+ping -c 3 -w 3 -q $ntp_server_ip || printf '%s\n' "error"
+
+
+
+
+TCP Port Scan :
+
+target_server_ip=''
+target_service_port=''
+
+timeout 3s bash -c "</dev/tcp/$target_server_ip/$target_service_port"
+
+
+
+
+
+
+
+
+
+package_name='chrony'
+package_service_name=$package_name
+
+apt install chrony
+
+current_timezone=$(timedatectl show --property=Timezone --value)
+[[ $current_timezone == 'Etc/UTC' ]] || timedatectl set-timezone Etc/UTC
+
+timedatectl set-local-rtc 0
+sed -i '/^pool/s/^/#/' /etc/chrony/chrony.conf
+printf 'server %s iburst\n' "$ntp_server" > /etc/chrony/conf.d/10-${ntp_server}.conf
+systemctl daemon-reload
+package_service_name="${package_service_name}.service"
+if systemctl is-running --quiet $package_service_name ; then systemctl restart $package_service_name || printf '%s\n' "error" ; else systemctl start $package_service_name || printf '%s\n' "error" ;
+systemctl is-enabled --quiet $package_service_name || systemctl enable --quiet $package_service_name
+chronyc waitsync 10 0 0 1 || printf '%s\n' "error"
+
+
+
+
+
+
+
+
+
+
+
+
+
+( ca must be in pem format and .crt extension )
+
+
+
+apt install  ca-certificates
+cp /usr/local/share/ca-certificates/wazuh-ca.crt
+chmod 644 /usr/local/share/ca-certificates/wazuh-ca.crt
+update-ca-certificates
+ls -l /etc/ssl/certs | grep wazuh-ca
+
+openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt server-certificate.crt
+
+
+
+
+
+apt install ./wazuh-indexer*.deb
+apt install whois
+
+password='abc'
+
+wazuh_indexer_admin_user_password=$(openssl mac -digest sha256 -macopt keyfile:<(printf '%s' "$password") -in <(printf '%s' "wazuh:admin") HMAC)
+wazuh_indexer_admin_user_hash=$(mkpasswd --method=bcrypt --rounds=12 --stdin < <(printf '%s' "$wazuh_indexer_admin_user_password"))
+yq -i '.admin.hash = strenv(wazuh_indexer_admin_user_hash)' /etc/wazuh-indexer/opensearch-security/internal_users.yml
+
+wazuh_indexer_kibana_user_password=$(openssl mac -digest sha256 -macopt keyfile:<(printf '%s' "$password") -in <(printf '%s' "wazuh:kibanaserver") HMAC)
+wazuh_indexer_kibana_user_hash=$(mkpasswd --method=bcrypt --rounds=12 --stdin < <(printf '%s' "$wazuh_indexer_kibana_user_password"))
+yq -i '.kibanaserver.hash = strenv(wazuh_indexer_kibana_user_hash)' /etc/wazuh-indexer/opensearch-security/internal_users.yml
+
+
+
+
+wazuh_indexer_private_key_password='xyz'
+
+sudo nano /etc/wazuh-indexer/opensearch.yml : ( Add )
+
+network.host: "172.16.1.2"
+node.name: "wazuh-indexer"
+discovery.type: single-node
+transport.port: 9300
+plugins.security.nodes_dn:
+- "CN=wazuh-indexer"
+plugins.security.ssl.transport.enforece_hostname_verification: true
+plugins.security.ssl.transport.resolve_hostname: true
+plugins.security.authcz.admin_dn:
+  - "CN=wazuh-admin"
+plugins.security.password.hashing.algorithm: BCrypt
+plugins.security.password.hashing.bcrypt.rounds: 12
+plugins.security.password.hashing.bcrypt.minor: B
+bootstrap.memory_lock: true
+http.port: 443
+http.compression: true
+compression_level: 3
+plugins.security.ssl.http.enabled: true
+plugins.security.ssl.http.clientauth_mode: OPTIONAL
+plugins.security.ssl.http.enabled_protocols:
+  - "TLSv1.3"
+plugins.security.ssl.http.enabled_ciphers:
+  - "TLS_AES_128_GCM_SHA256"
+config.dynamic.http.anonymous_auth_enabled: false
+
+
+PKCS 8 :
+
+plugins.security.ssl.transport.pemcert_filepath: /etc/wazuh-indexer/certs/indexer-transport.pem
+plugins.security.ssl.transport.pemkey_filepath: /etc/wazuh-indexer/certs/indexer-key.pem
+plugins.security.ssl.transport.pemtrustedcas_filepath: /etc/wazuh-indexer/certs/root-ca.pem
+
+plugins.security.ssl.http.pemcert_filepath: /etc/wazuh-indexer/certs/indexer.pem
+plugins.security.ssl.http.pemkey_filepath: /etc/wazuh-indexer/certs/indexer-key.pem
+
+sudo --user wazuh-indexer /usr/share/wazuh-indexer/bin/opensearch-keystore add --force --stdin plugins.security.ssl.transport.pemkey_password_secure < <(printf '%s\n' "$wazuh_indexer_private_key_password")
+sudo --user wazuh-indexer /usr/share/wazuh-indexer/bin/opensearch-keystore add --force --stdin plugins.security.ssl.http.pemkey_password_secure < <(printf '%s\n' "$wazuh_indexer_private_key_password")
+
+PKCS 12 :
+
+-------------------------------------------
+
+test pkcs12 being supported :
+
+/usr/share/wazuh-indexer/jdk/bin/keytool -list -v -storetype PKCS12 -keystore /etc/wazuh-indexer/certs/root-ca.pfx -storepass:file <(printf '%s' "$bundle_password")
+/usr/share/wazuh-indexer/jdk/bin/keytool -list -v -storetype PKCS12 -keystore /etc/wazuh-indexer/certs/indexer.pfx -storepass:file <(printf '%s' "$bundle_password")
+
+-------------------------------------------
+
+plugins.security.ssl.transport.keystore_type: PKCS12
+plugins.security.ssl.transport.truststore_type: PKCS12
+plugins.security.ssl.transport.keystore_filepath: certs/indexer-transport.pfx
+plugins.security.ssl.transport.truststore_filepath: certs/root-ca.pfx
+
+plugins.security.ssl.http.keystore_type: PKCS12
+plugins.security.ssl.http.keystore_filepath: certs/indexer.pfx
+
+
+sudo --user wazuh-indexer /usr/share/wazuh-indexer/bin/opensearch-keystore add --force --stdin plugins.security.ssl.transport.truststore_password_secure < <(printf '%s\n' "$wazuh_ca_bundle_password")
+sudo --user wazuh-indexer /usr/share/wazuh-indexer/bin/opensearch-keystore add --force --stdin plugins.security.ssl.transport.keystore_password_secure < <(printf '%s\n' "$wazuh_indexer_private_key_password")
+sudo --user wazuh-indexer /usr/share/wazuh-indexer/bin/opensearch-keystore add --force --stdin plugins.security.ssl.http.keystore_password_secure < <(printf '%s\n' "$wazuh_indexer_private_key_password")
+
+
+sudo --user wazuh-indexer /usr/share/wazuh-indexer/bin/opensearch-keystore list
+
+
+
+sudo mkdir /etc/wazuh-indexer/certs/
+sudo chmod 555 /etc/wazuh-indexer/certs/
+
+sudo cp root-ca.pem /etc/wazuh-indexer/certs/
+sudo chmod 644 /etc/wazuh-indexer/certs/root-ca.pem
+sudo cp indexer.pem /etc/wazuh-indexer/certs/
+sudo chmod 644 /etc/wazuh-indexer/certs/indexer.pem
+sudo cp admin.pem /etc/wazuh-indexer/certs/
+sudo chmod 644 /etc/wazuh-indexer/certs/admin.pem
+sudo cp indexer-key.pem /etc/wazuh-indexer/certs/
+sudo chmod 600 /etc/wazuh-indexer/certs/indexer-key.pem
+sudo cp admin-key.pem /etc/wazuh-indexer/certs/
+sudo chmod 600 /etc/wazuh-indexer/certs/admin-key.pem
+
+sudo chown -R wazuh-indexer:wazuh-indexer /etc/wazuh-indexer/certs
+
+sudo mkdir -p /etc/systemd/system/wazuh-indexer.service.d/
+printf "[Service]\nLimitMEMLOCK=infinity\n" | sudo tee /etc/systemd/system/wazuh-indexer.service.d/wazuh-indexer.conf > /dev/null
+
+total_ram_gb=$((total_ram_kb / 1024 / 1024))
+installed_ram_gb=$(gawk -v total_ram_gb="$total_ram_gb" 'BEGIN{printf "%d",2^(int(log(total_ram_gb)/log(2)+0.5))}') 
+
+VM :
+
+read -r _ memory_kb _ < /proc/meminfo
+
+Container : 
+
+read -r memory_b < /sys/fs/cgroup/memory.max
+memory_kb=$((memory_b / 1024))
+
+
+memory_gb=$(gawk -v memory_kb="$memory_kb" 'BEGIN{memory_gb=memory_kb/1024/1024;printf "%d",2^(int(log(memory_gb)/log(2)+0.5))}')
+
+wazuh_indexer_jvm_memory_limit=$((memory_gb / 2))
+
+sudo sed -i "s|^-Xms.*$|-Xms${wazuh_indexer_jvm_memory_limit}g|" /etc/wazuh-indexer/jvm.options
+sudo sed -i "s|^-Xmx.*$|-Xmx${wazuh_indexer_jvm_memory_limit}g|" /etc/wazuh-indexer/jvm.options
+
+/etc/wazuh-indexer/opensearch-security/config.yml
+
+_meta:
+  type: "config"
+  config_version: 2
+config:
+  dynamic:
+    authc:
+      basic_internal_auth_domain:
+        http_enabled: true
+        transport_enabled: true
+        order: 0
+        http_authenticator:
+          type: basic
+          challenge: true
+        authentication_backend:
+          type: internal
+auth_failure_listeners:
+  ip_rate_limiting:
+    type: ip
+    allowed_tries: 3
+    time_window_seconds: 60
+    block_expiry_seconds: 300
+    max_blocked_clients: 100000
+    max_tracked_clients: 100000
+  internal_authentication_backend_limiting:
+    type: username
+    authentication_backend: internal
+    allowed_tries: 3
+    time_window_seconds: 60
+    block_expiry_seconds: 300
+    max_blocked_clients: 100000
+    max_tracked_clients: 100000
+
+
+
+sudo systemctl daemon-reload
+sudo systemctl start wazuh-indexer
+sudo systemctl enable wazuh-indexer
+
+
+
+
+sudo apt install expect
+
+#!/usr/bin/expect -f
+
+set timeout 60
+log_user 0
+
+set wazuh_indexer_ip [lindex $argv 0]
+set wazuh_indexer_port [lindex $argv 1]
+gets stdin wazuh_root_ca_pfx_password
+gets stdin wazuh_indexer_admin_pfx_password
+
+spawn sudo env JAVA_HOME=/usr/share/wazuh-indexer/jdk /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
+--ignore-clustername --fail-fast --keystore-type PKCS12 --truststore-type PKCS12 --prompt-for-password --config-dir /etc/wazuh-indexer/opensearch-security \
+--keystore /etc/wazuh-indexer/certs/indexer-admin.pfx --truststore /etc/wazuh-indexer/certs/root-ca.pfx --hostname $wazuh_indexer_ip --port $wazuh_indexer_port
+
+expect {
+  "Enter Truststore Password:" {
+    send -- "$wazuh_root_ca_pfx_password\r"
+    exp_continue
+  }
+  "Enter Keystore Password:" {
+    send -- "$wazuh_indexer_admin_pfx_password\r"
+    exp_continue
+  }
+  eof {
+    set result [wait]
+    exit [lindex $result 3]
+  }
+  timeout {
+    exit 124
+  }
+}
+
+wazuh_root_ca_pfx_password=''
+wazuh_indexer_admin_pfx_password=''
+expect ./securityadmin.exp "$wazuh_indexer_ip" "$wazuh_indexer_port" < <(printf '%s\n%s\n' "$wazuh_root_ca_pfx_password" "$wazuh_indexer_admin_pfx_password")
+
+wazuh_indexer_admin_user_password='xyz'
+curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --cacert root-ca.pem --config <(printf 'user = "%s:%s"\n' "admin" "$wazuh_indexer_admin_user_password") --url https://wazuh-indexer.local
+wazuh_indexer_response=$(curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --cacert root-ca.pem --config <(printf 'user = "%s:%s"\n' "admin" "$wazuh_indexer_admin_user_password") --url "https://wazuh-indexer.local/_nodes?filter_path=**.mlockall")
+
+is_jvm_memory_limit_applied=$(jq --raw-output '.nodes[].process.mlockall' < <(printf '%s' "$wazuh_indexer_response"))
+[[ $is_jvm_memory_limit_applied == true ]] || exit 1
+
+
+
+
+Server Install ::
+
+apt-get -y install ./wazuh-manager
+
+/var/ossec/etc/ossec.conf :
+
+
+wazuh_server_ip_address='172.16.1.2'
+wazuh_clients_ip_range='172.16.0.0/12'
+wazuh_server_memory_limit_mb='8192'
+
+<ossec_config>
+
+  <ruleset>
+    <decoder_dir>ruleset/decoders</decoder_dir>
+    <rule_dir>ruleset/rules</rule_dir>
+    <rule_exclude>0215-policy_rules.xml</rule_exclude>
+    <list>etc/lists/audit-keys</list>
+    <list>etc/lists/security-eventchannel</list>
+    <decoder_dir>etc/decoders</decoder_dir>
+    <rule_dir>etc/rules</rule_dir>
+  </ruleset>
+
+  <global>
+    <alerts_log>yes</alerts_log>
+    <logall>no</logall>
+    <jsonout_output>yes</jsonout_output>
+    <logall_json>yes</logall_json>
+    <update_check>no</update_check>
+    <memory_size>${wazuh_server_memory_limit_mb}</memory_size>
+  </global>
+
+  <remote>
+    <connection>syslog</connection>
+    <port>514</port>
+    <protocol>tcp</protocol>
+    <ipv6>no</ipv6>
+    <allowed-ips>
+      <ip>${wazuh_clients_ip_range}</ip>
+      <ip>127.0.0.1/32</ip>
+    </allowed-ips>
+    <local_ip>${wazuh_server_ip_address}</local_ip>
+  </remote>
+
+  <alerts>
+    <log_alert_level>3</log_alert_level>
+  </alerts>
+
+  <logging>
+    <log_format>plain</log_format>
+  </logging>
+
+  <rule_test>
+    <enabled>yes</enabled>
+    <threads>1</threads>
+    <max_sessions>64</max_sessions>
+    <session_timeout>15m</session_timeout>
+  </rule_test>
+
+  <active-response>
+    <disabled>yes</disabled>
+  </active-response>
+
+  <auth>
+    <disabled>yes</disabled>
+  </auth>
+
+  <cluster>
+    <disabled>yes</disabled>
+  </cluster>
+
+  <fluent-forward>
+    <enabled>no</enabled>
+  </fluent-forward>
+
+  <github>
+    <enabled>no</enabled>
+  </github>
+
+  <ms-graph>
+    <enabled>no</enabled>
+  </ms-graph>
+
+  <office365>
+    <enabled>no</enabled>
+  </office365>
+
+  <rootcheck>
+    <disabled>yes</disabled>
+  </rootcheck>
+
+  <sca>
+    <enabled>no</enabled>
+  </sca>
+
+  <syscheck>
+    <disabled>yes</disabled>
+  </syscheck>
+
+  <vulnerability-detection>
+    <enabled>no</enabled>
+  </vulnerability-detection>
+
+  <wodle name="agent-key-polling">
+    <enabled>no</enabled>
+  </wodle>
+
+  <wodle name="aws-s3">
+    <disabled>yes</disabled>
+  </wodle>
+
+  <wodle name="azure-logs">
+    <disabled>yes</disabled>
+  </wodle>
+
+  <wodle name="command">
+    <disabled>yes</disabled>
+  </wodle>
+
+  <wodle name="docker-listener">
+    <disabled>yes</disabled>
+  </wodle>
+
+  <wodle name="osquery">
+    <disabled>yes</disabled>
+  </wodle>
+
+  <wodle name="syscollector">
+    <disabled>yes</disabled>
+  </wodle>
+
+  <wodle name="cis-cat">
+    <disabled>yes</disabled>
+  </wodle>
+
+  <gcp-pubsub>
+    <enabled>no</enabled>
+  </gcp-pubsub>
+
+  <gcp-bucket>
+    <enabled>no</enabled>
+  </gcp-bucket>
+
+  <indexer>
+    <enabled>no</enabled>
+  </indexer>
+</ossec_config>
+
+check 
+/var/ossec/logs/archives/archives.json
+
+/var/ossec/bin/wazuh-analysisd -t
+systemctl restart wazuh-manager
+systemctl status wazuh-manager
+
+
+
+https://documentation.wazuh.com/current/user-manual/api/configuration.html?utm_source=chatgpt.com
+
+
+
+use nginx as reverse proxy for wazuh manager api :
+
+/var/ossec/api/configuration/api.yaml :
+
+host: ['$wazuh_server_ip_address']
+port: 443
+
+https:
+  enabled: no
+
+access:
+  max_login_attempts: 3
+  block_time: 300
+
+
+
+
+chown -R wazuh:wazuh /var/ossec/api/configuration/ssl/
+/var/ossec/api/configuration/ssl/api.private.key.pem ( chmod 400 )
+/var/ossec/api/configuration/ssl/api.certificate.pem ( chmod 444 )
+
+wazuh_server_ip_address='172.16.1.2'
+wazuh_server_filebeat_root_ca_path='/etc/filebeat/certs/root-ca.pem'
+wazuh_server_api_url='https://$wazuh_server_ip_address/'
+
+
+/var/ossec/api/configuration/api.yaml :
+
+host: ['$wazuh_server_ip_address']
+port: 443
+
+https:
+  enabled: true
+  key: "api.private.key.pem"
+  cert: "api.certificate.pem"
+  use_ca: false
+  ssl_protocol: TLSv1.3
+  ssl_ciphers: TLS_AES_128_GCM_SHA256
+
+access:
+  max_login_attempts: 3
+  block_time: 300
+
+
+
+sudo systemctl restart wazuh-manager
+
+wazuh_server_api_token=$(curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --cacert $wazuh_server_filebeat_root_ca_path --request POST --user wazuh:wazuh --url "${wazuh_server_api_url}security/user/authenticate?raw=true" )
+
+read -r -d '' wazuh_server_api_authorization_header <<-EOF
+	header = "Authorization: Bearer ${wazuh_server_api_token}"
+	header = "Content-Type: application/json"
+EOF
+
+wazuh_server_api_user_wazuh_password='xyz'
+
+wazuh_server_api_user_wazuh_password_json_object=$(printf '%s' "$wazuh_server_api_user_wazuh_password" | jq --raw-input --null-input '{password: input}')
+
+curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --cacert "$wazuh_server_filebeat_root_ca_path" --request PUT --url "${wazuh_server_api_url}security/users/1" --data-raw @- --config <(printf '%s' "$wazuh_server_api_authorization_header") < <(printf '%s' "$wazuh_server_api_user_wazuh_password_json_object")
+
+wazuh_server_api_user_wazuh_wui_password='xyz'
+
+wazuh_server_api_user_wazuh_wui_password_json_object=$(printf '%s' "$wazuh_server_api_user_wazuh_wui_password" | jq --raw-input --null-input '{password: input}')
+
+curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --cacert $wazuh_server_filebeat_root_ca_path --request PUT --url "${wazuh_server_api_url}security/users/2" --data-raw @- --config <(printf '%s' "$wazuh_server_api_authorization_header") < <(printf '%s' "$wazuh_server_api_user_wazuh_wui_password_json_object")
+
+
+
+
+
+
+apt-get -y install ./filebeat
+
+sudo mv /etc/filebeat/filebeat.yml /etc/filebeat/filebeat.yml.bak
+
+
+
+
+
+
+/etc/filebeat/filebeat.yml :
+
+output.elasticsearch:
+  hosts: ["wazuh-indexer.internal:443"]
+  protocol: https
+  username: admin
+  password: "${wazuh_indexer_admin_user_password}"
+  ssl.certificate_authorities: ["/etc/filebeat/certs/root-ca.pem"]
+  ssl.supported_protocols: ["TLSv1.3"]
+  ssl.verification_mode: full
+setup.template.json.enabled: true
+setup.template.json.path: '/etc/filebeat/wazuh-template.json'
+setup.template.json.name: 'wazuh'
+setup.ilm.overwrite: true
+setup.ilm.enabled: false
+
+filebeat.modules:
+  - module: wazuh
+    alerts:
+      enabled: true
+    archives:
+      enabled: true
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+logging.metrics.enabled: false
+
+seccomp:
+  default_action: allow
+  syscalls:
+  - action: allow
+    names:
+    - rseq
+  
+sudo --preserve-env --user filebeat filebeat keystore list
+sudo --preserve-env --user filebeat filebeat keystore add --stdin --force wazuh_indexer_admin_user_password < <(echo "$wazuh_indexer_admin_user_password")
+
+sudo --preserve-env --user filebeat filebeat test config
+sudo --preserve-env --user filebeat filebeat test output
+
+check .keystore files ownership
+
+sudo cp ./wazuh-template.json /etc/filebeat/wazuh-template.json
+sudo tar -x -C /usr/share/filebeat/module -f ./wazuh-filebeat-0.5.tar.gz
+
+sudo mkdir /etc/filebeat/certs/
+sudo chmod 555 /etc/filebeat/certs/
+
+sudo cp ./root-ca.pem /etc/filebeat/certs/
+sudo chmod 444 /etc/filebeat/certs/root-ca.pem
+sudo cp ./filebeat.pem /etc/filebeat/certs/
+sudo chmod 444 /etc/filebeat/certs/filebeat.pem
+sudo cp ./filebeat-key.pem /etc/filebeat/certs/
+sudo chmod 400 /etc/filebeat/certs/filebeat-key.pem
+
+chown -R root:root /etc/filebeat/certs
+
+sudo systemctl daemon-reload
+sudo systemctl enable wazuh-manager
+sudo systemctl start wazuh-manager
+
+sudo systemctl status wazuh-manager
+
+sudo systemctl enable filebeat
+sudo systemctl start filebeat
+
+sudo filebeat test output
+
+================================================
+
+sudo apt install ./wazuh-dashboard
+
+edit in place :
+
+
+wazuh_dashboard_pfx_password='xyz'
+
+/etc/wazuh-dashboard/opensearch_dashboards.yml :
+
+server.host: '172.16.1.2'
+server.port: 443
+server.ssl.enabled: true
+server.ssl.supportedProtocols: ['TLSv1.3']
+server.ssl.cipherSuites: ['TLS_AES_128_GCM_SHA256']
+server.compression.enabled: true
+server.ssl.clientAuthentication: none
+server.ssl.keystore.path: /etc/wazuh-dashboard/certs/dashboard.pfx
+server.ssl.keystore.password: $wazuh_dashboard_pfx_password
+opensearch.hosts: ['https://wazuh-indexer.internal:443']
+opensearch.ssl.verificationMode: full
+opensearch.ssl.certificateAuthorities: ['/etc/wazuh-dashboard/certs/root-ca.pem']
+opensearch.ssl.alwaysPresentCertificate: false
+opensearch_security.cookie.secure: true
+opensearch.username: "kibanaserver"
+opensearch.password: "${opensearch.password}"
+data.search.usageTelemetry.enabled: false
+
+
+wazuh_indexer_user_kibanaserver_password='abc'
+sudo --user wazuh-dashboard /usr/share/wazuh-dashboard/bin/opensearch-dashboards-keystore add --force --stdin opensearch.password < <(printf '%s' "$wazuh_indexer_user_kibanaserver_password")
+
+sudo --user wazuh-dashboard opensearch-dashboards-keystore list
+
+
+
+sudo mkdir /etc/wazuh-dashboard/certs/
+sudo chmod 555 /etc/wazuh-dashboard/certs/
+
+sudo cp ./root-ca.pem /etc/wazuh-dashboard/certs/
+sudo chmod 444 /etc/wazuh-dashboard/certs/root-ca.pem
+sudo cp ./dashboard.pem /etc/wazuh-dashboard/certs/
+sudo chmod 444 /etc/wazuh-dashboard/certs/dashboard.pem
+sudo cp ./dashboard-key.pem /etc/wazuh-dashboard/certs/
+sudo chmod 400 /etc/wazuh-dashboard/certs/dashboard-key.pem
+
+sudo chown -R wazuh-dashboard:wazuh-dashboard /etc/wazuh-dashboard/certs
+
+sudo systemctl restart wazuh-dashboard
+
+sudo mv /usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml /usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml.bak
+
+/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml :
+
+hosts:
+  - manager-01:
+    url: https://wazuh-server.internal
+    port: 443
+    username: wazuh-wui
+    password: $wazuh_server_api_user_wazuh_wui_password
+    run_as: true
+    ca: /etc/wazuh-dashboard/certs/root-ca.pem
+
+
+sudo systemctl daemon-reload
+sudo systemctl enable wazuh-dashboard
+sudo systemctl start wazuh-dashboard
+
+
+☰ → Dashboard Management → Index Patterns : wazuh-archives-* -> time field : timestamp ( without @ )
+
+
+---------------------------------------------------
+
+
+=================================
+=================================================================================================
+
+ECDSA ( secp256r1 | P-256 | prime256v1 ) with SHA256 for wazuh
+
+-- checking certificate against a CA :
+
+openssl verify -CAfile ca.crt server.crt
+
+--- checking certificate against a private key :
+
+openssl x509 -noout -in server.crt -pubkey
+openssl pkey -noout -in server.key -pubout -passin file:<(printf '%s\n' "$password")
+
+--- checking certificate detail :
+
+openssl x509 -text -noout -in certificate.pem 
+
+--- checking request detail :
+
+openssl req -text -noout -in request.pem
+
+--- checking private key detail :
+
+openssl pkey -text -noout -in private.key
+
+--- indexer ( extendedKeyUsage ) extensions :
+
+openssl ecparam -genkey -name prime256v1 -out indexer.key
+openssl req -new -key indexer.key -out indexer.csr \
+  -subj "/CN=wazuh-indexer" \
+  -addext "subjectAltName=DNS:wazuh-indexer,DNS:localhost,IP:127.0.0.1" \
+  -addext "extendedKeyUsage=serverAuth,clientAuth"
+
+--- private key passing :
+
+openssl pkey -in <(printf '%s\n' "$private_key")
+
+============================================================================================
+
+sample :
+
+# Indexer
+openssl ecparam -genkey -name prime256v1 -out indexer.key
+openssl req -new -key indexer.key -out indexer.csr -subj "/CN=wazuh-indexer" \
+  -addext "subjectAltName=DNS:wazuh-indexer,DNS:localhost,IP:127.0.0.1"
+openssl x509 -req -sha256 -in indexer.csr -CA rootCA.pem -CAkey rootCA.key \
+  -CAcreateserial -out indexer.pem -days 3650
+
+# 2. Generate certs for each component with same curve
+# Manager
+openssl ecparam -genkey -name prime256v1 -out manager.key
+openssl req -new -key manager.key -out manager.csr -subj "/CN=wazuh-manager"
+openssl x509 -req -sha256 -in manager.csr -CA rootCA.pem -CAkey rootCA.key \
+  -CAcreateserial -out manager.pem -days 3650
+
+
+
+# Dashboard
+openssl ecparam -genkey -name prime256v1 -out dashboard.key
+openssl req -new -key dashboard.key -out dashboard.csr -subj "/CN=wazuh-dashboard" \
+  -addext "subjectAltName=DNS:wazuh-dashboard,DNS:localhost"
+openssl x509 -req -sha256 -in dashboard.csr -CA rootCA.pem -CAkey rootCA.key \
+  -CAcreateserial -out dashboard.pem -days 3650
+
+---------------------------------------------------------------------------------------
+
+
+
+is_file_pem_crt() {
+  [[ "$first_line" =~ ^-----BEGIN[[:space:]]CERTIFICATE-----$ ]] && openssl x509 -noout -in $file_path
+}
+
+is_file_pem_csr() {
+  [[ "$first_line" =~ ^-----BEGIN[[:space:]]CERTIFICATE[[:space:]]REQUEST-----$ ]] && openssl req -noout -in $file_path
+}
+
+is_file_pem_key() {
+  [[ "$first_line" =~ ^-----BEGIN[[:space:]]PRIVATE[[:space:]]KEY-----$ ]] && openssl pkey -noout -in $file_path
+}
+
+is_file_pem_key_enc() {
+  [[ "$first_line" =~ ^-----BEGIN[[:space:]]ENCRYPTED[[:space:]]PRIVATE[[:space:]]KEY-----$ ]] && openssl pkey -noout -in $file_path -check -passin file:<(printf '%s\n' "$password")
+}
+
+pfx or pem , then
+$(file -E --brief --mime-type $file_path)
+
+
+openssl pkcs12 -noout -in $file_path -passin file:<(printf '%s\n' "$password")
+
+--- Generating Private Key : ( PKCS8 , No Private Key Encyption , No Authentication )
+
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out ./root-ca.key
+chmod 600 ./root-ca.key
+
+--- Generating Encrypted Private Key : ( PKCS8 , Private Key Encyption , No Authentication )
+
+V1 : -v1 PBE-SHA1-3DES
+V2 : -v2 aes-256-cbc -v2prf hmacWithSHA256 -saltlen 16 -iter 1000000
+
+openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 -saltlen 16 -iter 1000000 -in <(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256) -out ./root-ca.key -passout file:<(printf '%s\n' "$password")
+chmod 444 ./root-ca.key
+
+--- Generating PFX Bundle : ( PKCS12 , No Private Key Encyption , Bundle Authentication )
+
+pfx_key_password='xyz'
+openssl pkcs12 -export -in root-ca.pem -out root-ca.pfx -macalg SHA256 -macsaltlen 16 -certpbe NONE -iter 1000000 -passout file:<(printf '%s' "$pfx_key_password")
+
+--- Generating Encrypted PFX Bundle : ( PKCS12 , Private Key Encyption , Bundle Authentication )
+
+private_key_password='xyz'
+pfx_key_password='xyz'
+openssl pkcs12 -export -in server-cert.pem -out server.pfx -macalg SHA256 -macsaltlen 16 -certpbe NONE -iter 1000000 -passout file:<(printf '%s' "$pfx_key_password") -inkey server-key.pem -passin file:<(printf '%s' "$private_key_password") -certfile root-ca.pem -keypbe AES-256-CBC  
+
+--- Generating CA :
+
+ca_cert_extensions=$(cat <<-EOF
+  basicConstraints=critical,CA:TRUE
+  keyUsage=critical,keyCertSign,cRLSign
+	subjectKeyIdentifier=hash
+EOF
+)
+
+openssl req -new -sha256 -x509 -days 3650 -key ./root-ca.key -passin file:<(printf '%s\n' "$password") -out ./root-ca.pem -subj "/CN=wazuh-ca" -extfile <(printf '%s' "$ca_cert_extensions")
+chmod 444 ./root-ca.pem
+
+--- Generating CSR :
+
+openssl req -new -sha256 -key ./server-key.pem -passin file:<(printf '%s\n' "$password") -out server.csr -subj "/CN=wazuh-server"  
+
+--- Generating TLS Server Certificate :
+
+server_cert_extensions=$(cat <<-EOF
+  basicConstraints=critical,CA:FALSE
+  keyUsage=critical,digitalSignature
+  subjectKeyIdentifier=hash
+  authorityKeyIdentifier=keyid,issuer
+  extendedKeyUsage=serverAuth
+  subjectAltName=DNS:wazuh-server.example.com
+EOF
+)
+
+certificate_serial=$(openssl rand -hex 16)
+openssl x509 -req -sha256 -days 3650 -CA ./root-ca.pem -set_serial "0x${certificate_serial}" -CAkey ./root-ca.key -passin file:<(printf '%s\n' "$password") -in server.csr -out server.pem -extfile <(printf '%s' "$server_cert_extensions")
+
+--- Generating TLS Client Certificate : ( Wazuh Indexer Admin )
+
+openssl req -new -sha256 -key ./server-key.pem -passin file:<(printf '%s\n' "$password") -out server.csr -subj "/CN=wazuh-admin"  
+
+client_cert_extensions=$(cat <<-EOF
+  basicConstraints=critical,CA:FALSE
+  keyUsage=critical,digitalSignature
+  subjectKeyIdentifier=hash
+  authorityKeyIdentifier=keyid,issuer
+  extendedKeyUsage=clientAuth
+EOF
+)
+
+certificate_serial=$(openssl rand -hex 16)
+openssl x509 -req -sha256 -days 3650 -CA ./root-ca.pem -set_serial "0x${certificate_serial}" -CAkey ./root-ca.key -passin file:<(printf '%s\n' "$password") -in admin.csr -out admin.pem -extfile <(printf '%s' "$client_cert_extensions")
+
+--- Generating Mutual TLS Certificate : ( Wazuh Indexer Transport )
+
+openssl req -new -sha256 -key ./server-key.pem -passin file:<(printf '%s\n' "$password") -out server.csr -subj "/CN=wazuh-indexer"  
+
+wazuh_indexer_transport_extensions=$(cat <<-EOF
+  basicConstraints=critical,CA:FALSE
+  keyUsage=critical,digitalSignature
+  subjectKeyIdentifier=hash
+  authorityKeyIdentifier=keyid,issuer
+  extendedKeyUsage=serverAuth,clientAuth
+  subjectAltName=DNS:wazuh-indexer.internal
+EOF
+)
+
+certificate_serial=$(openssl rand -hex 16)
+openssl x509 -req -sha256 -days 3650 -CA ./root-ca.pem -set_serial "0x${certificate_serial}" -CAkey ./root-ca.key -passin file:<(printf '%s\n' "$password") -in indexer-transport.csr -out indexer-transport.pem -extfile <(printf '%s' "$wazuh_indexer_transport_extensions")
+
+=====================================================================================
+
+root_ca_password='abc'
+
+openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 -saltlen 16 -iter 1000000 -in <(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256) -out ./root-ca.key -passout file:<(printf '%s\n' "$root_ca_password")
+chmod 444 ./root-ca.key
+
+root_ca_extensions=$(cat <<-EOF
+  basicConstraints=critical,CA:TRUE
+  keyUsage=critical,keyCertSign,cRLSign
+	subjectKeyIdentifier=hash
+	authorityKeyIdentifier=keyid:always
+EOF
+)
+
+openssl req -new -sha256 -x509 -days 3650 -key ./root-ca.key -passin file:<(printf '%s\n' "$root_ca_password") -out ./root-ca.pem -subj "/CN=Wazuh-CA" -extfile <(printf '%s' "$root_ca_extensions")
+chmod 444 ./root-ca.pem
+
+
+
+=====================================================================================
+
+create indexer private key
+
+openssl req -new -sha256 \
+    -key indexer/indexer.key \
+    -out indexer/indexer.csr \
+    -subj "/C=US/ST=YourState/L=YourCity/O=YourOrg/OU=Indexer/CN=wazuh-indexer" \
+    -addext "subjectAltName=DNS:wazuh-indexer,DNS:localhost,DNS:indexer-1,DNS:indexer-2,DNS:indexer-3,IP:127.0.0.1,IP:192.168.1.10,IP:192.168.1.11,IP:192.168.1.12"
+
+
+openssl x509 -req -sha256 -days 3650 \
+    -in indexer/indexer.csr \
+    -CA root-ca/root-ca.pem \
+    -CAkey root-ca/root-ca.key \
+    -CAserial root-ca/serial \
+    -out indexer/indexer.pem \
+    -extfile <(cat <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment,dataEncipherment
+extendedKeyUsage=serverAuth,clientAuth
+subjectAltName=DNS:wazuh-indexer,DNS:localhost,DNS:indexer-1,DNS:indexer-2,DNS:indexer-3,IP:127.0.0.1,IP:192.168.1.10,IP:192.168.1.11,IP:192.168.1.12
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+EOF
+)
+
+chmod 444 indexer/indexer.pem
+
+# Verify
+openssl verify -CAfile root-ca/root-ca.pem indexer/indexer.pem
+
+# This is for internal OpenSearch admin operations
+openssl ecparam -genkey -name prime256v1 -out indexer/indexer-admin.key
+openssl req -new -sha256 \
+    -key indexer/indexer-admin.key \
+    -out indexer/indexer-admin.csr \
+    -subj "/C=US/O=YourOrg/OU=Indexer-Admin/CN=admin"
+
+openssl x509 -req -sha256 -days 3650 \
+    -in indexer/indexer-admin.csr \
+    -CA root-ca/root-ca.pem \
+    -CAkey root-ca/root-ca.key \
+    -CAserial root-ca/serial \
+    -out indexer/indexer-admin.pem \
+    -extfile <(cat <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth
+EOF
+)
+
+chmod 400 indexer/indexer-admin.key
+chmod 444 indexer/indexer-admin.pem
+
+Create Filebeat Private Key
+
+openssl req -new -sha256 \
+    -key filebeat/filebeat.key \
+    -out filebeat/filebeat.csr \
+    -subj "/C=US/ST=YourState/L=YourCity/O=YourOrg/OU=Filebeat/CN=filebeat"
+
+
+openssl x509 -req -sha256 -days 3650 \
+    -in filebeat/filebeat.csr \
+    -CA root-ca/root-ca.pem \
+    -CAkey root-ca/root-ca.key \
+    -CAserial root-ca/serial \
+    -out filebeat/filebeat.pem \
+    -extfile <(cat <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth,serverAuth
+subjectAltName=DNS:filebeat,DNS:localhost,IP:127.0.0.1
+EOF
+)
+
+chmod 444 filebeat/filebeat.pem
+
+# Verify
+openssl verify -CAfile root-ca/root-ca.pem filebeat/filebeat.pem
+
+# Filebeat requires PKCS#8 format
+openssl pkcs8 -topk8 -nocrypt \
+    -in filebeat/filebeat.key \
+    -out filebeat/filebeat-pkcs8.key
+
+chmod 400 filebeat/filebeat-pkcs8.key
+
+Create Dashboard Private Key
+
+openssl req -new -sha256 \
+    -key dashboard/dashboard.key \
+    -out dashboard/dashboard.csr \
+    -subj "/C=US/ST=YourState/L=YourCity/O=YourOrg/OU=Dashboard/CN=wazuh-dashboard" \
+    -addext "subjectAltName=DNS:wazuh-dashboard,DNS:localhost,IP:127.0.0.1"
+
+openssl x509 -req -sha256 -days 3650 \
+    -in dashboard/dashboard.csr \
+    -CA root-ca/root-ca.pem \
+    -CAkey root-ca/root-ca.key \
+    -CAserial root-ca/serial \
+    -out dashboard/dashboard.pem \
+    -extfile <(cat <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth,clientAuth
+subjectAltName=DNS:wazuh-dashboard,DNS:localhost,IP:127.0.0.1
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+EOF
+)
+
+chmod 444 dashboard/dashboard.pem
+
+# Verify
+openssl verify -CAfile root-ca/root-ca.pem dashboard/dashboard.pem
+
+Generate Manager Certificate (If Using Agent Communication)
+
+openssl req -new -sha256 \
+    -key manager/manager.key \
+    -out manager/manager.csr \
+    -subj "/C=US/ST=YourState/L=YourCity/O=YourOrg/OU=Manager/CN=wazuh-manager" \
+    -addext "subjectAltName=DNS:wazuh-manager,DNS:localhost,IP:127.0.0.1"
+
+
+openssl x509 -req -sha256 -days 3650 \
+    -in manager/manager.csr \
+    -CA root-ca/root-ca.pem \
+    -CAkey root-ca/root-ca.key \
+    -CAserial root-ca/serial \
+    -out manager/manager.pem \
+    -extfile <(cat <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth,clientAuth
+subjectAltName=DNS:wazuh-manager,DNS:localhost,IP:127.0.0.1
+EOF
+)
+
+chmod 444 manager/manager.pem
+
+
+
+
+
+==============================================
+
+Extension	Root CA	Component Certs
+basicConstraints	CA:TRUE	CA:FALSE
+keyUsage	keyCertSign,cRLSign	digitalSignature,keyEncipherment
+extendedKeyUsage	—	serverAuth,clientAuth
+subjectAltName	—	All DNS names and IPs
+subjectKeyIdentifier	hash	hash
+authorityKeyIdentifier	—	keyid,issuer
+
+
+=========================================================================================================
+=========================================================================================================
+
+Indexer removed configs :
+
+plugins.security.ssl.http.pemtrustedcas_filepath: /etc/wazuh-indexer/certs/root-ca.pem
+
+plugins.security.ssl.http.truststore_type: PKCS12
+plugins.security.ssl.http.truststore_filepath: certs/root-ca.pfx
+
+sudo --user wazuh-indexer /usr/share/wazuh-indexer/bin/opensearch-keystore add --force --stdin plugins.security.ssl.http.truststore_password_secure < <(printf '%s\n' "$wazuh_ca_bundle_password")
+
+Manager removed configs :
+
+  <indexer>
+    <enabled>yes</enabled>
+    <hosts>
+      <host>https://wazuh-indexer.local</host>
+    </hosts>
+    <username>admin</username>
+    <ssl>
+      <certificate_authorities>
+        <ca>/etc/filebeat/certs/root-ca.pem</ca>
+      </certificate_authorities>
+      <certificate></certificate>
+      <key></key>
+    </ssl>
+  </indexer>
+
+/var/ossec/bin/wazuh-keystore -f indexer -k password < <(printf '%s\n' "$wazuh_indexer_admin_user_password")
+
+
+filebeat removed configs :
+
+output.elasticsearch:
+  hosts:
+    - "https://indexer.example.com:9200"
+
+  username: "filebeat"
+  password: "YOUR_PASSWORD"
+
+  ssl:
+    certificate_authorities:
+      - "/etc/filebeat/certs/root-ca.pem"
+
+filebeat.yml :
+
+ssl.certificate: "/etc/filebeat/certs/filebeat.pem"
+ssl.key: "/etc/filebeat/certs/filebeat-key.pem"
+ssl.key_passphrase: "${output.elasticsearch.ssl.key_passphrase}"
+
+wazuh_server_filebeat_private_key_password='xyz'
+sudo filebeat keystore add --force --stdin output.elasticsearch.ssl.key_passphrase < <(echo "$wazuh_server_filebeat_private_key_password")
+
+dashboard removed configs :
+
+wazuh_dashboard_private_key_password='abc'
+sudo --user wazuh-dashboard opensearch-dashboards-keystore add --force --stdin opensearch.ssl.keyPassphrase < <(printf '%s' "$wazuh_dashboard_private_key_password")
+
+server.ssl.certificate: /etc/wazuh-dashboard/certs/dashboard.pem
+server.ssl.key: /etc/wazuh-dashboard/certs/dashboard-key.pem
+opensearch.ssl.keyPassphrase: "${opensearch.ssl.keyPassphrase}"
+
+==============================================================
+
+
+

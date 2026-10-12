@@ -1,0 +1,2088 @@
+
+ 
+set -Eeuo pipefail
+
+error_handler() {
+    local line=$1
+    local exit_code=$2
+    local command="${BASH_COMMAND:-unknown}"
+    try_push "ERROR: command failed with exit code $exit_code"
+    if (( ${#ERROR_STACK[@]} > 0 )); then
+        local count=1
+        for (( i=${#ERROR_STACK[@]}-1; i>=0; i-- )); do
+            local func="${ERROR_STACK_FUNCS[$i]}"
+            local file="${ERROR_STACK_FILES[$i]}"
+            local line_num="${ERROR_STACK_LINES[$i]}"
+            local msg="${ERROR_STACK[$i]}"
+            
+            echo "[$count] ${func}() [${file}:${line_num}] : ${msg}" >&2
+            ((count++))
+        done
+    fi
+    
+    exit "$exit_code"
+}
+
+trap 'error_handler $LINENO $?' ERR
+
+===================================================================
+
+function positional argument data passing :
+
+1. scalar variables ( string , boolean , integer ): passed by value
+
+is_value_string
+is_vlaue_boolean
+is_value_integer
+
+2. array variables ( list , dictionary ) : passed by variable name
+
+is_variable_defined
+is_variable_list
+is_variable_dictionary
+
+
+circular pattern :
+
+1. 
+
+a() {
+  b
+}
+
+b() {
+  a
+}
+
+a
+
+2. 
+
+a() { :; }
+b() { :; }
+
+a() {
+  b
+}
+
+
+
+
+
+
+for_loop function
+
+validate_vlan_id
+validate_transport_port
+validate_address_ipv4
+validate_address_ipv6
+validate_domain_name
+
+
+====== Main Script Syntax :
+
+#!/bin/bash
+source /usr/lib/bashutils/bashutils.bash
+bashutils_init
+
+====== bashutils.bash :
+
+
+declare -g bashutils_version='1.0.0'
+declare -p bashutils_sourced &>/dev/null && return 0
+declare -g -a bashutils_error_list
+declare -g bashutils_sourced
+
+
+
+
+# try error_message command_name
+
+try() {
+  (($# >= 2)) || {
+    bashutils_error_list+=("try function requires an error message followed by a function or command or script name")
+    return "$false"
+  }
+  bashutils_error_list+=("$1")
+  shift
+  "$@"
+  declare "$integer_variable_option" bashutils_exit_code="$?"
+  (($bashutils_exit_code != 0)) && return "$bashutils_exit_code"
+  unset 'bashutils_error_list[-1]'
+  bashutils_error_list=("${bashutils_error_list[@]}")
+}
+
+# parameter_count 1 "$@" || return "$false"
+
+parameter_count() {
+  declare "$integer_variable_option" target_parameter_count="$1"
+  declare "$integer_variable_option" parameter_count="$#"
+  parameter_count=$((parameter_count - 1))
+  true_condition=$(( target_parameter_count == parameter_count ))
+  declare parent_function_name="${FUNCNAME[$parent_function_index]}"
+  try "${parent_function_name} function requires ${target_parameter_count} parameter(s)" (( ! true_condition ))
+}
+
+# parameter_count_minimum 1 "$@" || return "$false"
+
+parameter_count_minimum() {
+  declare "$integer_variable_option" minimum_parameter_count="$1"
+  declare "$integer_variable_option" parameter_count="$#"
+  parameter_count=$((parameter_count - 1))
+  true_condition=$(( minimum_parameter_count <= parameter_count ))
+  declare parent_function_name="${FUNCNAME[$parent_function_index]}"
+  try "${parent_function_name} function requires at least ${minimum_parameter_count} parameter(s)" (( ! true_condition ))
+}
+
+---------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+# assign_list variable_name 'abc' 'xyz'
+
+assign_list() {
+  parameter_count_minimum 2 "$@" || return "$false"
+  shift
+  declare "$reference_variable_option" list_variable_refrence="$1"
+  list_variable_refrence=("$@")
+}
+
+# is_variable_assigned variable_name
+
+is_variable_assigned() {
+  parameter_count 1 "$@" || return "$false"
+  shift
+  declare "$reference_variable_option" variable_reference="$1"
+  [[ -z "$variable_reference" ]] && {
+    bashutils_error_list+="$1 variable's value is not assigned"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+# declare "$string_lowercase_variable_option" distribution_name
+# get_distribution_name distribution_name || return "$false"
+# debian
+
+get_distribution_name() {
+  parameter_count 1 "$@" || return "$false"
+  declare "$reference_variable_option" distribution_name="$1"
+  declare "$string_variable_option" os_release_file_path="/etc/os-release"
+  distribution_name="$(. "$os_release_file_path" && echo "$ID")"
+  [[ -n distribution_name ]]
+}
+
+# declare "$integer_variable_option" distribution_version
+# get_distribution_version distribution_version || return "$false"
+# 13
+
+get_distribution_version() {
+  parameter_count 1 "$@" || return "$false"
+  declare "$reference_variable_option" distribution_version="$1"
+  declare "$string_variable_option" os_release_file_path="/etc/os-release"
+  distribution_version="$(. "$os_release_file_path" && echo "$VERSION_ID")"
+}
+
+# declare "$integer_variable_option" distribution_version_name
+# get_distribution_version_name distribution_version_name || return "$false"
+# trixie
+
+get_distribution_version_name() {
+  parameter_count 1 "$@" || return "$false"
+  declare "$reference_variable_option" distribution_version_name="$1"
+  declare "$string_variable_option" os_release_file_path="/etc/os-release"
+  distribution_version_name="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+is_docker() {
+  [[ -f "/.dockerenv" ]]
+}
+
+is_podman() {
+  [[ -f "/run/.containerenv" ]]
+}
+
+is_container() {
+  is_docker || is_podman
+}
+
+is_virtual_machine() {
+  is_container && return 1 
+  sys_vendor_file_path="/sys/class/dmi/id/sys_vendor"
+  vendor_name="$(<"$sys_vendor_file_path")"
+  create_list virtualization_vendor_names 'QEMU' 'VMware, Inc.' 'Microsoft Corporation'
+  is_list_member virtualization_vendor_names vendor_name
+}
+
+is_physical() {
+  ! is_virtual_machine || return 1
+}
+
+# Init Guard
+
+bashutils_init_guard() {
+  declare -p bashutils_initialized &>/dev/null && return
+  declare -g bashutils_initialized
+}
+
+
+
+# is_variable_defined "$1" || return 1
+
+is_variable_defined() {
+  require_parameter "$@" || return 1
+  declare variable_name="$1"
+  if ! declare -p "$variable_name" &>/dev/null
+  then
+    bashutils_command_error="${variable_name} variable is not defined"
+    return 1
+  fi
+}
+
+is_variable_type_string() {
+  declare variable_name="$1"
+  require_parameter "$variable_name" || return 1
+  is_variable_defined "$variable_name" || return 1
+  declare_string_exclude_regex_pattern='^declare -[^[:space:]]*[aAi]'
+  if [[ $(declare -p "$variable_name" 2>/dev/null) =~ $declare_string_exclude_regex_pattern ]]
+  then
+    bashutils_command_error="${variable_name} variable type is not string"
+    return 1
+  fi
+}
+
+is_variable_string() {
+  declare variable_name="$1"
+  require_parameter "$variable_name" || return 1
+  is_variable_type_string "$variable_name" || return 1
+  declare -n variable_value="$variable_name"
+  [[ -n "$variable_value" ]] || {
+    bashutils_command_error="${variable_name} variable value ${variable_value} is not string"
+    return 1
+  }
+}
+
+declare -i is_enabled="$true"
+
+is_variable_boolean() {
+  declare variable_name="$1"
+
+}
+
+is_variable_type_integer() {
+  declare variable_name="$1"
+  require_parameter "$variable_name" || return 1
+  is_variable_defined "$variable_name" || return 1
+  declare_integer_include_regex_pattern='^declare -[^[:space:]]*i'
+  if [[ ! $(declare -p "$variable_name" 2>/dev/null) =~ $declare_integer_include_regex_pattern ]]
+  then
+    bashutils_command_error="${variable_name} variable type is not integer"
+    return 1
+  fi
+}
+
+is_value_integer() {
+  declare variable_name="$1"
+  require_parameter "$variable_name" || return 1
+  is_variable_type_integer "$variable_name" || return 1
+  declare -n variable_value="$variable_name"
+  integer_include_regex_pattern='^-?[0-9]+$'
+  if [[ ! "$variable_value" =~ $integer_include_regex_pattern ]]
+  then
+    bashutils_command_error="${variable_name} variable value ${variable_value} is not integer"
+    return 1
+  fi
+}
+
+
+
+
+
+
+
+is_variable_type_list() {
+  declare variable_name="$1"
+  require_parameter "$variable_name" || return 1
+  is_variable_defined "$variable_name" || return 1
+  declare_indexed_array_include_regex_pattern='^declare -[^[:space:]]*a'
+  if [[ ! $(declare -p "$variable_name" 2>/dev/null) =~ $declare_indexed_array_include_regex_pattern ]]
+  then
+    bashutils_command_error="${variable_name} variable type is not list ( indexed array )"
+    return 1
+  fi
+}
+
+is_variable_list()
+
+
+declare -n variable_value="$variable_name"
+(( ${#variable_value[@]} -gt 0 )) || {}
+
+
+is_variable_dictionary() {
+  declare variable_name="$1"
+  require_parameter "$variable_name" || return 1
+  is_variable_defined "$variable_name" || return 1
+  declare_associative_array_include_regex_pattern='^declare -[^[:space:]]*A'
+  if [[ ! $(declare -p "$variable_name" 2>/dev/null) =~ $declare_associative_array_include_regex_pattern ]]
+  then
+    bashutils_command_error="${variable_name} variable type is not dictionary ( associative array )"
+    return 1
+  fi
+}
+
+is_function_defined() {
+  declare function_name="$1"
+  require_parameter "$function_name" || return 1
+  if ! declare -F "$function_name" >/dev/null
+  then
+    bashutils_command_error="${function_name} function is not defined"
+    return 1
+  fi
+}
+
+///////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+bashutils_array_length() {
+  declare -n array_name="$1"
+  echo "${#array_name[@]}"
+}
+
+# printf '\n  MESSAGE : %s !' "$bashutils_script_error" >&2
+
+# trap _bashutils_error_handler ERR
+
+bashutils_error_handler() {
+  declare -i bashutils_exit_code=$?
+  declare bashutils_error_message
+  if is_variable_assigned "$bashutils_script_error"
+  then
+    bashutils_error_message+=$(cat <<EOF
+      Script Error : $bashutils_script_error
+    EOF)
+  fi
+  if is_variable_assigned "$bashutils_command_error"
+  then
+    bashutils_error_message+=$(cat <<EOF
+      Command Error : $bashutils_script_error
+    EOF)
+  fi
+  if is_variable_assigned BASH_COMMAND
+  then
+    bashutils_error_message+=$(cat <<EOF
+      Bash Command  : $BASH_COMMAND
+    EOF)
+  fi
+
+
+
+
+  if [[ -n "$_bashutils_error_message" ]] && declare -p _bashutils_error_message &>/dev/null
+  then
+    
+  fi
+  (( _bashutils_error_code -eq 0 )) && return
+  if [[ -v BASH_COMMAND && -n "$BASH_COMMAND" ]]
+  then
+    printf '\n  COMMAND : %s' "$BASH_COMMAND" >&2
+  fi
+  [[ ! -v FUNCNAME ]] && return "$_bashutils_error_code"
+  declare -i _bashutils_functions_count
+  _bashutils_functions_count=${#FUNCNAME[@]}
+  (( $_bashutils_functions_count -lt 2 )) && return "$_bashutils_error_code"
+  [[ ! -v BASH_SOURCE || ! -v BASH_LINENO ]] && return "$_bashutils_error_code"
+  (( ${#BASH_SOURCE[@]} -lt _bashutils_functions_count || ${#BASH_LINENO[@]} -lt _bashutils_functions_count )) && return "$_bashutils_error_code"
+  printf '\n  Call Stack Trace :' >&2
+  declare -i bashutils_functions_index
+  for (( bashutils_functions_index=${#FUNCNAME[@]}-1; bashutils_functions_index -ge 1; bashutils_functions_index-- ))
+  do
+    printf '\n  %s() [%s:%s]' "${FUNCNAME[bashutils_functions_index]}" "${BASH_SOURCE[bashutils_functions_index]}" "${BASH_LINENO[bashutils_functions_index-1]}" >&2
+  done
+  printf '\n' >&2
+  return "$_bashutils_error_code"
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# bashutils_init
+
+_bashutils_init() {
+  _bashutils_init_guard
+  set -Eeuo pipefail
+  declare -g _bashutils_error_message
+  trap _bashutils_error_handler ERR
+}
+
+
+
+
+
+
+
+_require_parameter
+_require_function
+
+
+option_value=
+valid_values=("abc" "xyz")
+values_array=()
+
+
+
+
+option_name
+option_type
+option
+
+
+
+
+
+
+_require_parameter help_banner || exit 1
+
+
+# Create-Script-Template 
+
+Create-Script-Template :
+
+#!/usr/bin/bash
+source /usr/lib/bashutils/bashutils
+bashutils_init
+
+version="1.0.0"
+help_banner="--help-banner '--xyz --abc 123' --bool-options xyz --data-options abc --required-options abc --script-version 1.0.0"
+
+script_version=""
+script_help_banner=""
+
+data_options=()
+bool_options=()
+
+bashutils_options=$(getopt --longoptions help-banner:,bool-options:,data-options:,required-options:,script-version:,version,help -- "$@")
+eval set -- "$bashutils_options"
+
+while true
+do
+  case "$1" in
+    --help-banner)
+      help_banner="$2"
+      shift 2 ;;
+    --bool-options)
+      shift
+      while [[ $# -gt 0 && ${1:0:2} != "--" ]]
+      do
+        bool_options+=("$1")
+        shift
+      done ;;
+    ---data-options)
+      shift
+      while [[ $# -gt 0 && ${1:0:2} != "--" ]]
+      do
+        data_options+=("$1")
+        shift
+      done ;;
+    --required-options)
+      shift
+      while [[ $# -gt 0 && ${1:0:2} != "--" ]]
+      do
+        required_options+=("$1")
+        shift
+      done ;;
+    --script-version)
+      script_version="$2"
+      shift 2 ;;
+    --version)
+      printf '%s' "$version"
+      exit 0 ;;
+    --help)
+      printf '  %s %s\n' "$0" "$help_banner"
+      exit 0 ;;
+    --)
+      shift
+      break ;;
+    *)
+      bashutils_error_message="$0 SCRIPT INVALID OPTION $1"
+      exit 1 ;;
+  esac
+done
+
+script_template=$(cat <<EOF
+#!/usr/bin/bash
+source /usr/lib/bashutils/bashutils.bash
+bashutils_init
+
+version=$script_version
+help_banner=$script_help_banner
+
+
+
+
+EOF)
+
+script_options=""
+
+for bool_option in "${bool_options[@]}"
+do
+  script_options+="${bool_option},"
+  script_bool_variable_name="${bool_option//-/_}"
+  script_template+=$(cat <<EOF
+  $script_bool_variable_name=true
+  EOF)
+done
+
+for data_option in "${data_options[@]}"
+do
+  script_options+="${data_option}:,"
+  script_data_variable_name="${data_option//-/_}"
+  script_template+=$(cat <<EOF
+  $script_data_variable_name= ?????
+  EOF)
+done
+
+script_options="${script_options},version,help"
+
+script_options=$script_options
+
+
+
+
+
+
+\$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+docker image : trixie-slim
+debootstrap image : --variant=minbase
+net install image : uncheck everything
+
+debootstrap and docker images only include packages with ( Essential: yes ) and their dependencies + apt package and its dependencies  
+
+Use LEGO inside each website nginx container
+HTTP-01 Webroot Mapping : https://github.com/go-acme/lego
+
+====== Docker File :
+
+
+FROM debian:trixie-slim
+
+COPY nginxx.gpg /etc/apt/keyrings/nginxx.gpg
+COPY nginxx.sources /etc/apt/sources.list.d/nginxx.sources
+COPY legoo.sources /etc/apt/sources.list.d/legoo.sources
+
+RUN set -eu; \
+  DEBIAN_FRONTEND=noninteractive apt-get update; \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx ca-certificates legoo; \
+  rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /usr/share/nginx/html/.well-known/acme-challenge
+
+STOPSIGNAL SIGQUIT
+
+COPY entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+RUN chmod +x /entrypoint.sh
+
+====== entrypoint.sh :
+
+#!/bin/sh
+nginx -g "daemon on;"
+
+lego --email="your-email@example.com" --domains="yourdomain.com" --http --http.webroot="/usr/share/nginx/html" run
+
+while true
+do
+  sleep 86400
+  lego --email="your-email@example.com" --domains="yourdomain.com" --http --http.webroot="/usr/share/nginx/html" renew && nginx -s reload
+done
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GAWK DEB Package :
+
+sudo apt install musl-tools build-essential
+
+#!/bin/bash
+set -Eeuo pipefail
+
+curl -LO https://ftp.gnu.org/gnu/gawk/gawk-5.4.0.tar.xz
+tar -xf gawk-5.4.0.tar.xz
+rm ./gawk-5.4.0.tar.xz
+CC=musl-gcc CFLAGS="-O2 -static" LDFLAGS="-static" ac_cv_lib_mpfr=no ac_cv_lib_gmp=no ./gawk-5.4.0/configure --disable-shared --enable-static --disable-nls --disable-extensions
+make -j"$(nproc)"
+strip ./gawk-5.4.0/gawk
+file ./gawk-5.4.0/gawk
+mv ./gawk-5.4.0/gawk ./gawk
+rm -rf ./gawk-5.4.0
+mkdir -p awkk/DEBIAN
+printf "Package: awkk\nVersion: 1.8.1\nArchitecture: amd64\nDescription: GNU AWK Static Standalone Build\nMaintainer: Debian Local <debian@local>\n" | tee ./awkk/DEBIAN/control > /dev/null
+mkdir -p awkk/usr/local/bin
+cp ./gawk ./awkk/usr/local/bin/awkk
+chmod 755 ./awkk/usr/local/bin/awkk
+dpkg-deb -Zzstd --build --root-owner-group ./awkk awkk_5.4.0-1_amd64.deb
+rm -rf ./awkk
+
+===============================================================================================================================================================================================
+
+
+lego_version="5.2.2"
+curl -fsSL --compressed --connect-timeout 3 "https://github.com/go-acme/lego/releases/download/v${lego_version}/lego_v${lego_version}_linux_amd64.tar.gz"
+
+===============================================================================================================================================================================================
+
+JQ DEB Package :
+
+#!/bin/bash
+set -Eeuo pipefail
+
+curl -LO https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64
+mkdir -p jqq/DEBIAN
+printf "Package: jqq\nVersion: 1.8.1\nArchitecture: amd64\nDescription: https://github.com/jqlang/jq\nMaintainer: Debian Local <debian@local>\n" | tee ./jqq/DEBIAN/control > /dev/null
+mkdir -p jqq/usr/local/bin
+cp ./jq-linux-amd64 ./jqq/usr/local/bin/jqq
+chmod 755 ./jqq/usr/local/bin/jqq
+dpkg-deb -Zzstd --build --root-owner-group ./jqq jqq_1.8.1-1_amd64.deb
+rm -rf ./jqq
+
+===============================================================================================================================================================================================
+
+YQ GO DEB Package :
+
+#!/bin/bash
+set -Eeuo pipefail
+
+curl -LO https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
+mkdir -p yqq/DEBIAN
+printf "Package: yqq\nVersion: 4.53.3\nArchitecture: amd64\nDescription: https://github.com/mikefarah/yq\nMaintainer: Debian Local <debian@local>\n" | tee ./yqq/DEBIAN/control > /dev/null
+mkdir -p yqq/usr/local/bin
+cp ./yq_linux_amd64 ./yqq/usr/local/bin/yqq
+chmod 755 ./yqq/usr/local/bin/yqq
+dpkg-deb -Zzstd --build --root-owner-group ./yqq yqq_4.53.3-1_amd64.deb
+rm -rf ./yqq
+
+===============================================================================================================================================================================================
+
+Config-IP :
+
+#!/bin/bash
+set -Eeuo pipefail
+
+usage() {
+  printf ' %s --addr 192.168.1.2/24 --gateway 192.168.1.1\n' "$0"
+}
+
+INT_IP_CIDR=""
+INT_GATEWAY=""
+
+ARGS=$(getopt --long addr:,gateway:,help -- "$@")
+eval set -- "$ARGS"
+
+while true; do
+  case "$1" in
+    --addr)
+      INT_IP_CIDR="$2"
+      shift 2 ;;
+    --gateway)
+      INT_GATEWAY="$2"
+      shift 2 ;;
+    --help)
+      usage
+      exit 1 ;;
+    --)
+      shift
+      break ;;
+    *)
+      usage
+      exit 1 ;;
+  esac
+done
+
+INT_MAC=$( ip -j link | jq -r '[ .[] | select(.link_type == "ether") | .address ][0]')
+
+if [[ -z "$INT_MAC" ]]
+then
+  printf 'Ethernet Network Interface Not Found !\n' >&2
+  exit 1
+fi
+
+YQQ_QUERY='.Match.Name = "eth0" | .Network.DHCP = "no" | .Network.IPv6AcceptRA = "no"'
+
+if [[ -n "$INT_IP_CIDR" ]]
+then
+  YQQ_QUERY+=' | .Network.Address = strenv(INT_IP_CIDR)'
+else
+  usage
+  exit 1
+fi
+
+if [[ -n "$INT_GATEWAY" ]]
+then
+  YQQ_QUERY+=' | .Route[0].Destination = "0.0.0.0/0" | .Route[0].Gateway = strenv(INT_GATEWAY)'
+else
+  usage
+  exit 1
+fi
+
+INT_CONF_PREFIX="/etc/systemd/network/10-eth0."
+INT_CONF_L2_PATH="${INT_CONF_PREFIX}link"
+INT_CONF_L3_PATH="${INT_CONF_PREFIX}network"
+if systemctl is-active networking --quiet
+then
+  rm -rf /etc/systemd/network/*
+  touch "$INT_CONF_L2_PATH"
+  chown root:root "$INT_CONF_L2_PATH"
+  chmod 644 "$INT_CONF_L2_PATH"
+  yqq -n -o=ini '.Match.MACAddress = strenv(INT_MAC) | .Link.Name = "eth0"' > "$INT_CONF_L2_PATH"
+  touch "$INT_CONF_L3_PATH"
+  chown root:root "$INT_CONF_L3_PATH"
+  chmod 644 "$INT_CONF_L3_PATH"
+  yqq -n -o=ini "$YQQ_QUERY" > "$INT_CONF_L3_PATH"
+  systemctl enable systemd-networkd >/dev/null
+  systemctl mask networking --quiet
+  reboot
+else
+  yqq -i -p=ini -o=ini "$YQQ_QUERY" "$INT_CONF_L3_PATH"
+  systemctl restart systemd-networkd
+fi
+
+===============================================================================================================================================================================================
+
+Install-Apt-Repo :
+
+#!/bin/bash
+set -Eeuo pipefail
+
+usage() {
+  printf ' %s --repo { debian | wazuh } --mirror { local | official }\n' "$0"
+}
+
+REPO_NAME=""
+REPO_MIRROR=""
+
+ARGS=$(getopt --long addr:,gateway:,help -- "$@")
+eval set -- "$ARGS"
+
+while true; do
+  case "$1" in
+    --repo)
+      REPO_NAME="$2"
+      shift 2 ;;
+    --mirror)
+      REPO_MIRROR="$2"
+      shift 2 ;;
+    --help)
+      usage
+      exit 1 ;;
+    --)
+      shift
+      break ;;
+    *)
+      usage
+      exit 1 ;;
+  esac
+done
+
+REPO_SUITES="stable"
+REPO_KEY="${REPO_NAME}-${REPO_MIRROR}"
+
+if [[ -n "$REPO_NAME" ]]
+then
+  case "$REPO_NAME" in
+    debian)
+      DEB_CN="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+      ;;
+    wazuh)
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+else
+  usage
+  exit 1
+fi
+
+if [[ -n "$REPO_MIRROR" ]]
+then
+  case "$REPO_MIRROR" in
+    official)
+      if [[ "$REPO_NAME" == "debian" ]]
+      then
+        REPO_URL="https://deb.debian.org/debian"
+        REPO_SUITES="$DEB_CN ${DEB_CN}-updates"
+        SOURCE1="\nTypes: deb\nURIs: ${REPO_URL}\nSuites: ${REPO_SUITES}\nComponents: main\nSigned-By: /usr/share/keyrings/${REPO_KEY}.gpg\n"
+        REPO_URL="https://security.debian.org/debian-security"
+        REPO_SUITES="${DEB_CN}-security"
+        SOURCE2="\nTypes: deb\nURIs: ${REPO_URL}\nSuites: ${REPO_SUITES}\nComponents: main\nSigned-By: /usr/share/keyrings/${REPO_KEY}.gpg\n"
+        printf "${SOURCE1}${SOURCE2}" | tee /etc/apt/sources.list.d/debian-archive-keyring.sources > /dev/null
+        exit 0
+      else
+        REPO_URL="https://packages.wazuh.com/4.x/apt"
+      fi
+      ;;
+    local)
+      REPO_URL_PREFIX="http://deb.debian.internal/"
+      REPO_URL="${REPO_URL_PREFIX}${REPO_NAME}"
+      if [[ "$REPO_NAME" == "debian" ]]
+      then
+        REPO_SUITES="$DEB_CN"
+      fi
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+else
+  usage
+  exit 1
+fi
+
+printf "\nTypes: deb\nURIs: ${REPO_URL}\nSuites: ${REPO_SUITES}\nComponents: main\nSigned-By: /usr/share/keyrings/${REPO_KEY}.gpg\n" | tee "/etc/apt/sources.list.d/${REPO_KEY}.sources" > /dev/null
+
+Install-Script-Tools :
+
+#!/bin/bash
+set -Eeuo pipefail
+
+Config-NTP :
+
+Chrony
+
+Config-DNS :
+
+#!/bin/bash
+set -Eeuo pipefail
+
+usage() {
+  printf ' %s --srv1 1.1.1.1 [ --srv2 8.8.8.8 ]\n' "$0"
+}
+
+DNS_SRV1=""
+DNS_SRV2=""
+
+ARGS=$(getopt --long srv1:,srv2:,help -- "$@")
+eval set -- "$ARGS"
+
+while true; do
+  case "$1" in
+    --srv1)
+      DNS_SRV1="$2"
+      shift 2 ;;
+    --srv2)
+      DNS_SRV2="$2"
+      shift 2 ;;
+    --help|*)
+      usage
+      exit 1 ;;
+    --)
+      shift
+      break ;;
+  esac
+done
+
+PKG_LIST=("systemd-resolved")
+
+for PKG in "${PKG_LIST[@]}"
+do
+  if ! dpkg -s "$PKG" >/dev/null 2>&1
+  then
+    apt install ./"${PKG}"*.deb
+  fi
+done
+
+systemctl enable --now systemd-resolved >/dev/null
+
+  RESOLVED_CONF_PATH="/run/systemd/resolve/resolv.conf"
+  if [[ ! -L "/etc/resolv.conf" ]]
+  then
+    ln -sf "$RESOLVED_CONF_PATH" /etc/resolv.conf
+  else
+    if [[ "$(readlink -f /etc/resolv.conf)" != "$RESOLVED_CONF_PATH" ]]
+    then
+      ln -sf "$RESOLVED_CONF_PATH" /etc/resolv.conf
+    fi  
+  fi
+
+
+
+if [[ -z "$DNS_SRV1" ]]
+then
+  printf 'DNS Server Not Specified !\n' >&2
+  exit 1
+fi
+
+sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+
+control file :
+Depends: jq, libcap2-bin
+
+echo "Types: deb\nURIs: file:/opt/wazuh-local\nSuites: stable\nComponents: main\nSigned-By: /usr/share/keyrings/wazuh-local.gpg" | sudo tee /etc/apt/sources.list.d/wazuh-local.sources
+
+sudo apt update
+
+
+
+
+Download-Packages :
+
+
+Create-Repo :
+
+sudo apt install dpkg-dev apt-utils
+
+
+#!/bin/bash
+set -Eeuo pipefail
+read -s -p "Enter Password : " GPG_PASS
+echo
+mkdir -p wazuh-local/dists/stable/main/binary-amd64/
+mkdir -p wazuh-local/pool/main/
+cp ./*.deb ./wazuh-local/pool/main/
+apt-ftparchive packages --sha512 --no-md5 --no-sha1 --no-sha256 ./wazuh-local/pool/main | zstd -q -f -o ./wazuh-local/dists/stable/main/binary-amd64/Packages.zst
+printf "s2k-cipher-algo AES256\ns2k-digest-algo SHA512\ncert-digest-algo SHA512\ns2k-count 65011712\ns2k-mode 3\nallow-loopback-pinentry" | tee "$HOME/.gnupg/gpg.conf" > /dev/null
+printf "Key-Type: eddsa\nKey-Curve: ed25519\nKey-Usage: sign\nName-Real: wazuh-local\nName-Email: wazuh@local\nExpire-Date: 0\n%%commit\n" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASS" --generate-key
+rm "$HOME/.gnupg/gpg.conf"
+GPG_ID=$(gpg --batch --with-colons --list-secret-keys wazuh-local | jq -R -s 'split("\n") | map(select(startswith("fpr:"))) | .[0] | split(":")[9]')
+DEBIAN_CODE_NAME="$(lsb_release -cs)"
+DEBIAN_VERSION="$(. /etc/os-release && echo "$DEBIAN_VERSION")"
+apt-ftparchive --sha512 --no-md5 --no-sha1 --no-sha256 -o APT::FTPArchive::Release::Architectures=amd64 -o APT::FTPArchive::Release::Components=main -o APT::FTPArchive::Release::Suite="stable" -o APT::FTPArchive::Release::Codename="$DEBIAN_CODE_NAME" -o APT::FTPArchive::Release::Version="$DEBIAN_VERSION" release ./wazuh-local/dists/stable | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASS" -z0 --default-key "$GPG_ID" --clearsign -o ./wazuh-local/dists/stable/InRelease
+gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASS" --export-secret-keys --armor "$GPG_ID" > wazuh-local-key.asc
+gpg --batch --yes --delete-secret-keys "$GPG_ID"
+gpg --batch --armor --export "$GPG_ID" | gpg --dearmor > wazuh-local.gpg
+gpg --batch --yes --delete-keys "$GPG_ID"
+tar -cf wazuh-local.tar ./wazuh-local
+rm -rf ./wazuh-local
+
+ca-certificates , debian-archive-keyring deb packages 
+
+the vps should have LVM installed
+
+Download-File :
+
+#!/bin/bash
+set -Eeuo pipefail
+
+usage() {
+  printf ' %s --name google.html --url https://google.com/index.html [ --quiet ]\n' "$0"
+}
+
+WGET_FILE_NAME=""
+WGET_FILE_URL=""
+WGET_QUIET=false
+
+ARGS=$(getopt --long quiet:,name:,url:,help -- "$@")
+eval set -- "$ARGS"
+
+while true; do
+  case "$1" in
+    --quiet)
+      WGET_QUIET=true
+      shift ;;
+    --name)
+      WGET_FILE_NAME="$2"
+      shift 2 ;;
+    --url)
+      WGET_FILE_URL="$2"
+      shift 2 ;;
+    --help)
+      usage
+      exit 1 ;;
+    --)
+      shift
+      break ;;
+    *)
+      usage
+      exit 1 ;;
+  esac
+done
+
+if ! Check-Apps wget
+then
+  
+fi
+
+Check-Packages 
+
+WGET_OPTS="--secure-protocol=TLSv1_3 --tries=1 --timeout=5 "
+
+if [[ "$WGET_QUIET" == true ]]
+then
+  WGET_OPTS+="-q "
+else
+  WGET_OPTS+="-nv --show-progress "
+fi
+
+if [[ -n "$WGET_FILE_NAME" ]]
+then
+  WGET_OPTS+="-O $WGET_FILE_NAME "
+else
+  usage
+  exit 1
+fi
+
+if [[ -n "$WGET_FILE_URL" ]]
+then
+  WGET_OPTS+="$WGET_FILE_URL "
+else
+  usage
+  exit 1
+fi
+
+wget $WGET_OPTS
+
+
+
+
+debian packages : ca-certificates , debian-archive-keyring 
+
+
+debootstrap in vm 
+
+
+/usr/lib/wazuh-config-manager :
+
+wazuh-certs-tool-4.14
+wazuh-config-manager-defs
+Wazuh-Config-Manager
+
+Wazuh-Config-Manager --generate-certs
+Wazuh-Config-Manager --install-certs { server | indexer | dashboard } --archive { Archive Path }
+Create-Deb-Package --source { FILE | DIR Path } --name { APT PKG Name } --version { X.Y.Z } --description { Download URL } [ --dependencies { APT PKG 1 } [ APT PKG 2 ]  ]
+
+
+DOMAIN_NAMES=("wazuh-indexer.internal" "wazuh-server.internal" "wazuh-dashboard.internal")
+A_RECORDS=("127.0.0.1" "127.0.0.1" "127.0.0.1")
+DOMAINS_COUNT=${#DOMAIN_NAMES[@]}
+for ((DOMAIN_Index=0; DOMAIN_Index<DOMAINS_COUNT; DOMAIN_Index++))
+do
+  DOMAIN_NAME="${DOMAIN_NAMES[$DOMAIN_Index]}"
+  A_RECORD="${A_RECORDS[$DOMAIN_Index]}"
+  ADD_HOST "$DOMAIN_NAME" "$A_RECORD" 
+done
+
+--component { indexer | dashboard | server --server-type { master | worker } } --ca-key { Certificate Authority Private Key PATH }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+cat > config.yml <<'EOF'
+nodes:
+  indexer:
+    - name: wazuh-indexer
+      ip: "wazuh-indexer.internal"
+  server:
+    - name: wazuh-server
+      ip: "wazuh-server.internal"
+  dashboard:
+    - name: wazuh-dashboard
+      ip: "wazuh-dashboard.internal"
+EOF
+
+
+bash ./wazuh-certs-tool.sh -A
+
+rm -f ./wazuh-certificates-tool.log
+mv ./wazuh-certificates/wazuh-indexer.pem ./wazuh-certificates/indexer.pem
+mv ./wazuh-certificates/wazuh-indexer-key.pem ./wazuh-certificates/indexer-key.pem
+mv ./wazuh-certificates/wazuh-server.pem ./wazuh-certificates/filebeat.pem
+mv ./wazuh-certificates/wazuh-server-key.pem ./wazuh-certificates/filebeat-key.pem
+mv ./wazuh-certificates/wazuh-dashboard.pem ./wazuh-certificates/dashboard.pem
+mv ./wazuh-certificates/wazuh-dashboard-key.pem ./wazuh-certificates/dashboard-key.pem
+
+WAZUH_COMPONENTS=("wazuh-ca" "wazuh-indexer" "wazuh-server" "wazuh-dashboard")
+WAZUH_COMPONENTS_CERTS=(
+"./wazuh-certificates/root-ca.pem ./wazuh-certificates/root-ca.key"
+"./wazuh-certificates/root-ca.pem ./wazuh-certificates/indexer.pem ./wazuh-certificates/indexer-key.pem ./wazuh-certificates/admin.pem ./wazuh-certificates/admin-key.pem"
+"./wazuh-certificates/root-ca.pem ./wazuh-certificates/filebeat.pem ./wazuh-certificates/filebeat-key.pem"
+"./wazuh-certificates/root-ca.pem ./wazuh-certificates/dashboard.pem ./wazuh-certificates/dashboard-key.pem"
+)
+
+for WAZUH_COMP_Index in {0..3}
+do
+  ARCHIVE_NAME="${WAZUH_COMPONENTS[$WAZUH_COMP_Index]}.tar.gpg"
+  ARCHIVE_CERTS=(${WAZUH_COMPONENTS_CERTS[$WAZUH_COMP_Index]})
+  tar -c -f - "${ARCHIVE_CERTS[@]}" | gpg --batch --pinentry-mode loopback --passphrase-fd 3 --symmetric --cipher-algo AES256 --use-ocb-sym --compress-algo none --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 -o "$ARCHIVE_NAME" 3<<<"$GPG_PASS"
+done
+
+rm -rf ./wazuh-certificates/
+
+# get-cert-hash cert_hash $cert_content ; echo $cert_hash
+
+get-cert-hash() {
+  local -n cert_hash="$1"
+  local cert_content="$2"
+  cert_hash=$(openssl x509 -noout -fingerprint -sha256 -in <(printf '%s\n' "$cert_content") | cut -d= -f2)
+}
+
+get_wazuh_local_component_cert_hash()
+
+
+# verify_wazuh_remote_component_cert --local-component { indexer | server | dashboard } --remote-component --remote-domain --remote-cert-hash 
+
+
+local wazuh_local_component_name="$1"
+local wazuh_remote_component_domain_name="$2"
+local wazuh_remote_component_cert_hash="$3"
+
+local wazuh_component_names=("indexer" "server" "dashboard")
+local wazuh_component_storage_paths=("/etc/wazuh-indexer/certs" "/etc/filebeat/certs" "/etc/wazuh-dashboard/certs")
+local wazuh_component_cert_file_names=("indexer.pem" "filebeat.pem" "dashboard.pem")
+
+local wazuh_local_component_storage_path
+local wazuh_component_cert_file_name
+
+for wazuh_component_index in "${!wazuh_component_names[@]}"
+do
+  if [[ "${wazuh_component_names[wazuh_component_index]}" -eq "$wazuh_component_name" ]]
+  then
+    wazuh_component_storage_path="${wazuh_component_storage_paths[$wazuh_component_index]}"
+    wazuh_component_cert_file_name="${wazuh_component_cert_file_names[$wazuh_component_index]}"
+    break
+  fi
+done
+
+local wazuh_ca_cert_path="${wazuh_component_storage_path}/root-ca.pem"
+local wazuh_ca_cert_content="$(SUDO cat $wazuh_ca_cert_path)"
+
+local wazuh_component_cert_file_path="${wazuh_component_storage_path}/${wazuh_component_cert_file_name}"
+local wazuh_component_cert_file_content="$(SUDO cat $wazuh_component_cert_file_path)"
+
+
+
+
+
+
+
+
+
+
+
+timeout 5s openssl s_client -connect "${wazuh_component_domain_name}:443" -servername "$wazuh_component_domain_name" -verify_return_error -CAfile <(printf '%s\n' "$CA_PEM")  </dev/null 2>/dev/null 
+
+| openssl x509 -noout -fingerprint -sha256 | cut -d= -f2
+
+
+
+
+
+
+
+if response=$(curl -fsS --connect-timeout 3 -k -u admin "$URL")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+systemd-detect-virt
+
+1. debootstrap only kernel , required pkgs , no cloud-init
+
+2. LUKS root , separate boot partition if needed
+
+3. sign kernel and modules , restrict initramfs scripts
+
+
+
+Remote attestation : TPM-backed ( Intel TDX )
+
+Sign kernel/initramfs and kernel modules yourself
+Verify signatures at boot
+
+LUKS full-disk encryption + remote unlock ( SSH in initramfs ) : protects data-at-rest
+
+Rescue mode ::::::::::::::
+
+list disks :
+
+lsblk
+fdisk -l
+
+( /dev/sda ???? )
+
+bios vs uefi ???
+
+BIOS :
+
+fdisk /dev/sda
+
+/dev/sda1 : boot partition ( 512 MB )
+/dev/sda2 : LUKS container
+
+
+
+( swap ????? )
+sudo apt install cryptsetup debootstrap binutils
+
+cryptsetup luksFormat /dev/sda2
+cryptsetup open /dev/sda2 cryptroot
+
+mkfs.ext4 /dev/mapper/cryptroot
+mkfs.ext4 /dev/sda1
+
+mount /dev/mapper/cryptroot /mnt
+mkdir /mnt/boot
+mount /dev/sda1 /mnt/boot
+
+debootstrap trixie /mnt https://deb.debian.org/debian
+
+
+download and extract debian net install iso , use file:/{ ISO PATH }/debian instead of https . check Packages file being present in the /debian subpath of iso   
+
+mount --bind /dev /mnt/dev
+mount --bind /proc /mnt/proc
+mount --bind /sys /mnt/sys
+mount --bind /run /mnt/run
+
+
+( mount --bind /dev /mnt/dev , mount -t proc proc /mnt/proc ) only ????
+
+chroot /mnt /bin/bash
+
+echo "debian" > /etc/hostname
+
+echo "127.0.0.1 localhost\n127.0.1.1 debian\n::1 localhost ip6-localhost ip6-loopback\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters" > /etc/hosts
+
+
+
+/etc/network/interfaces , /etc/resolv.conf , /etc/hostname , /etc/hosts
+
+echo "" > /etc/network/interfaces
+
+
+apt update
+apt install sudo openssh-server linux-image-amd64 grub-pc cryptsetup-initramfs
+
+( mbr : grub-pc | gpt : grub-efi-amd64 )
+
+/etc/crypttab :
+
+cryptroot /dev/sda2 none luks
+
+/etc/fstab :
+
+/dev/mapper/cryptroot / ext4 defaults 0 1
+/dev/sda1 /boot ext4 defaults 0 2
+
+-------
+
+grub-install /dev/sda
+update-grub
+
+passwd
+adduser admin
+usermod -aG sudo admin
+
+/etc/ssh/sshd_config :
+
+PermitRootLogin no
+PasswordAuthentication yes
+
+systemctl enable ssh
+
+umount -R /mnt
+cryptsetup close cryptroot
+
+reboot
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+====== Bash Scripting :
+
+Syntax Checking   : bash -n { Script Name } 
+Trace & Debugging : bash -xv { Script Name }
+
+if -n : non empty string
+if -z : empty string
+
+===========================================================================================================================================================================================================
+
+sudo apt install whois
+mkpasswd -m yescrypt
+
+
+sudo useradd -m -U -s /bin/bash "$NEW_USER_NAME"
+sudo usermod -aG sudo "$NEW_USER_NAME"
+NEW_USER_PASS_HASH=''
+printf '%s:%s\n' "$NEW_USER_NAME" "$NEW_USER_PASS_HASH" | sudo chpasswd -e
+
+
+
+check to change for root in place
+
+===========================================================================================================================================================================================================
+
+create a cli interface for Config-Hosts and Config-Resolve
+
+Config-Host-Name --mode { replace | update } --name srv1 [ --domain xyz.com ]
+
+CONFIG_HOSTNAME() {
+  local NEW_HOSTNAME="$1"
+  if [[ "$(hostnamectl --static)" -ne "$NEW_HOSTNAME" ]]
+  then
+    SUDO hostnamectl hostname "$NEW_HOSTNAME"
+  fi
+}
+
+CONF_HOSTS_GENERATE() {
+  CONF_HOSTS_CONTENT="127.0.0.1 localhost\n127.0.1.1 ${CONF_HOSTS_ENTRY}\n::1 localhost ip6-localhost ip6-loopback\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\n"
+}
+
+CONF_HOSTS_UPDATE() {
+  if [[ $(grep -c -F "127.0.1.1" "$CONF_HOSTS_PATH") -eq 1 ]] && grep -q '^127\.0\.1\.1 .*$' "$CONF_HOSTS_PATH"
+  then
+    if ! grep -q "^127.0.1.1 $CONF_HOSTS_ENTRY$" "$CONF_HOSTS_PATH"
+    then
+      SUDO sed -i "s|^127\.0\.1\.1 .*$|127.0.1.1 ${CONF_HOSTS_ENTRY}|" "$CONF_HOSTS_PATH"
+    fi
+  fi
+}
+
+
+ADD_STATIC_DNS_RECORD() {
+  local DOMAIN_NAME="$1"
+  local A_RECORD="$2"
+  local HOSTS_FILE_PATH="/etc/hosts"
+  local ACTIVE_LINES=$(grep -v -E '^[[:space:]]*#.*$' "$HOSTS_FILE_PATH")
+  local TARGET_LINES=$(printf '%s\n' "$ACTIVE_LINES" | grep -E '[[:space:]]'"$DOMAIN_NAME"'([[:space:]]|$)')
+  if [[ -n "$TARGET_LINES" ]]
+  then
+    local TARGET_LINES_COUNT=$(printf '%s\n' "$TARGET_LINES" | wc -l)
+    [[ $TARGET_LINES_COUNT -eq 1 ]] || {
+      ERROR_MSG="${DOMAIN_NAME} DUPLICATE Entries"
+      return 1
+    }
+    local DOMAIN_REGEX=${DOMAIN_NAME//./\\.}
+    if ! printf '%s\n' "$TARGET_LINES" | grep -q -E "^[[:space:]]*${A_RECORD//./\\.}[[:space:]].*[[:space:]]'"$DOMAIN_REGEX"'([[:space:]]|$)"
+    then
+      ERROR_MSG="${DOMAIN_NAME} Entry SYNTAX"
+      return 1
+    fi
+  else
+    printf '%s\n' "${A_RECORD} ${DOMAIN_NAME}" | sudo tee -a "$HOSTS_FILE_PATH" > /dev/null
+  fi
+}
+
+CONFIG_HOSTS() {
+  local CFG_MODE="$1"
+  local NEW_HOSTNAME="$2"
+  local SITE_DOMAIN="$3"
+  local CONF_HOSTS_ENTRY=""
+  if [[ -z "$SITE_DOMAIN" ]]
+  then
+    CONF_HOSTS_ENTRY="$NEW_HOSTNAME"
+  else
+    CONF_HOSTS_ENTRY="${NEW_HOSTNAME}.${SITE_DOMAIN} ${NEW_HOSTNAME}"
+  fi
+  local CONF_HOSTS_PATH="/etc/hosts"
+  CONF_READABLE "$CONF_HOSTS_PATH" || return 1
+  SUDO CONF_WRITABLE "$CONF_HOSTS_PATH" || return 1
+  if [[ "$CFG_MODE" eq "replace" ]]
+  then
+    CONF_HOSTS_CONTENT=""
+    CONF_HOSTS_GENERATE
+    printf "%b" "$CONF_HOSTS_CONTENT" | SUDO tee "$CONF_HOSTS_PATH" >/dev/null
+  elif [[ "$CFG_MODE" eq "update" ]]
+  then
+    CONF_HOSTS_UPDATE
+  fi
+}
+
+CONFIG_RESOLVE() {
+  local CFG_MODE="$1"
+  local SITE_DOMAIN="$2"
+  local RESOLV_PATH="/etc/resolv.conf"
+  if [[ "$CFG_MODE" == "default" ]]
+  then
+    CONF_WRITABLE "$RESOLV_PATH" || return 1
+  else
+    CONF_READABLE "$RESOLV_PATH" || return 1
+  fi
+}
+
+--domain xyz.com --dns-servers 172.16.1.1 1.1.1.1 8.8.8.8
+
+DEFAULT_RESOLV() {
+  local DNS_SRV_LIST=()
+  while [[ $# -gt 0 ]]
+  do
+    case "$1" in
+      --domain)
+        SITE_DOMAIN="$2"
+        shift 2
+        ;;
+      --dns-servers)
+        shift
+        while [[ $# -gt 0 && "${1:0:2}" != "--" ]]
+        do
+          DNS_SRV_LIST+=("$1")
+          shift
+        done
+        ;;
+    esac
+  done
+  CONF_WRITABLE "$RESOLV_PATH" || return 1
+  local RESOLV_CONTENT=""
+  if [[ -n "$SITE_DOMAIN" ]]
+  then
+    RESOLV_CONTENT+="search ${SITE_DOMAIN}\n"
+  fi
+  if [[ ${#DNS_SRV_LIST[@]} -gt 0 ]]
+  then
+    for DNS_SRV in "${DNS_SRV_LIST[@]}"
+    do
+      RESOLV_CONTENT+="nameserver ${DNS_SRV}\n"
+    done
+  fi
+  printf "%b" "$RESOLV_CONTENT" | SUDO tee "$RESOLV_PATH" >/dev/null
+}
+
+UPDATE_RESOLV() {
+  CONF_READABLE "$RESOLV_PATH" || return 1
+  if [[ $(grep -c -F "search" "$RESOLV_PATH") -eq 1 ]] && grep -q '^search .*$' "$RESOLV_PATH"
+  then
+    if ! grep -q "^search $SITE_DOMAIN$" "$RESOLV_PATH"
+    then
+      CONF_WRITABLE "$RESOLV_PATH" || return 1
+      SUDO sed -i "s|^search .*$|search ${SITE_DOMAIN}|" "$RESOLV_PATH"
+    fi
+  fi
+}
+
+===========================================================================================================================================================================================================
+
+defs.sh :
+
+#!/bin/bash
+
+
+
+chown is root or sudo only
+
+Normal users file and directory permission :
+
+
+GET_FILE_PERM : chmod
+GET_FILE_OWNER : chmod , chown
+FILE_OWNER
+
+FILE_PERM_R
+FILE_PERM_W
+FILE_PERM_X
+
+DIR_PERM_X
+DIR_PERM_RX
+PARENT_DIR_PERM_X
+PARENT_DIR_PERM_RX
+PARENT_DIR_PERM_WX
+
+
+test      : PARENT_DIR_PERM_X
+stat      : PARENT_DIR_PERM_X
+
+cat       : PARENT_DIR_PERM_X && FILE_PERM_R
+
+echo      : PARENT_DIR_PERM_X && FILE_PERM_W
+
+script    : PARENT_DIR_PERM_X && FILE_PERM_X
+
+chmod     : PARENT_DIR_PERM_X && FILE_OWNER
+
+cd        : PARENT_DIR_PERM_X && DIR_PERM_X
+
+find      : PARENT_DIR_PERM_X && DIR_PERM_RX
+ls        : PARENT_DIR_PERM_X && DIR_PERM_RX
+
+
+touch     : PARENT_DIR_PERM_WX
+rm        : PARENT_DIR_PERM_WX
+mkdir     : PARENT_DIR_PERM_WX
+rmdir     : PARENT_DIR_PERM_WX
+lns       : PARENT_DIR_PERM_WX
+
+rmr       : PARENT_DIR_PERM_WX && DIR_PERM_RX
+
+cp        : 1 PARENT_DIR_PERM_X && FILE_PERM_R , 2 PARENT_DIR_PERM_WX
+cpr       : 1 PARENT_DIR_PERM_X && DIR_PERM_RX , 2 PARENT_DIR_PERM_WX
+mv        : 1 PARENT_DIR_PERM_WX , 2 PARENT_DIR_PERM_WX
+
+
+CHECK_PERMS() {
+  local OPERATION="$1"
+  local OPARG1="$2"
+  if [[ $# -eq 3 ]]
+  then
+    local OPARG2="$3"
+  fi
+  [[ "$EUID" -eq 0 ]] || {}
+}
+
+
+
+
+
+DIR_ACCESSIBLE() {
+  local DIR_PATH="$1"
+  [[ -n "$DIR_PATH" && -x "$DIR_PATH" ]] || {
+    ERROR_MSG="${DIR_PATH} Directory EXECUTE Permission"
+    return 1
+  }
+}
+
+PARENT_DIR_ACCESSIBLE() {
+  local DIR_PATH="$1"
+  local PARENT_DIR_PATH="$(dirname "$DIR_PATH")"
+  DIR_ACCESSIBLE "$PARENT_DIR_PATH" || return 1
+}
+
+
+
+DIR_PRESENT() {
+  local DIR_PATH="$1"
+  PARENT_DIR_ACCESSIBLE "$DIR_PATH" || return 1
+  [[ -d "$DIR_PATH" ]] || {
+    ERROR_MSG="${DIR_PATH:-<empty>} Directory NOT Found"
+    return 1
+  }
+}
+
+DIR_READABLE() {
+  local DIR_PATH="$1"
+  PARENT_DIR_ACCESSIBLE "$DIR_PATH" || return 1
+  [[ -r "$DIR_PATH" ]] || {
+    ERROR_MSG="${DIR_PATH} Directory READ Permission"
+    return 1
+  }
+}
+
+DIR_WRITEABLE() {
+  local DIR_PATH="$1"
+  PARENT_DIR_ACCESSIBLE "$DIR_PATH" || return 1 
+  [[ -w "$DIR_PATH" ]] || {
+    ERROR_MSG="${DIR_PATH} Directory WRITE Permission"
+    return 1
+  }
+}
+
+FILE_PRESENT() {
+  local FILE_PATH="$1"
+  PARENT_DIR_ACCESSIBLE "$FILE_PATH" || return 1
+  [[ -f "$FILE_PATH" ]] || {
+    ERROR_MSG="${FILE_PATH:-<empty>} File NOT Found"
+    return 1
+  }
+}
+
+FILE_READABLE() {
+  local FILE_PATH="$1"
+  FILE_PRESENT "$FILE_PATH" || return 1
+  [[ -r "$FILE_PATH" ]] || {
+    ERROR_MSG="${FILE_PATH} File READ Permission"
+    return 1
+  }
+}
+
+FILE_WRITEABLE() {
+  local FILE_PATH="$1"
+  FILE_PRESENT "$FILE_PATH" || return 1
+  [[ -w "$FILE_PATH" ]] || {
+    ERROR_MSG="${FILE_PATH} File WRITE Permission"
+    return 1
+  }
+}
+
+FILE_EXECUTABLE() {
+  local FILE_PATH="$1"
+  FILE_PRESENT "$FILE_PATH" || return 1
+  [[ -x "$FILE_PATH" ]] || {
+    ERROR_MSG="${FILE_PATH} File EXECUTE Permission"
+    return 1
+  }
+}
+
+USER_DEFINED() {
+  local USER_NAME="$1"
+  if ! id "$FILE_OWNER_USER" >/dev/null 2>&1
+  then
+    ERROR_MSG="${USER_NAME} NOT Defind"
+    return 1
+  fi
+}
+
+
+
+
+
+
+
+SET_FILE_OWNER() {
+  local FILE_PATH="$1"
+
+}
+
+if [[ $# -eq 1 ]]
+then
+  local FILE_OWNER_USER="${SUDO_USER:-$(id -un)}"
+  local FILE_OWNER_GROUP="$(id -gn "$FILE_OWNER_USER")"
+fi
+
+if [[ $# -ge 2 ]]
+then
+  local FILE_OWNER_USER="$2"
+  local FILE_OWNER_GROUP="$(id -gn "$FILE_OWNER_USER")"
+fi
+
+
+
+SUDO chown "${FILE_OWNER_USER}:${FILE_OWNER_GROUP}" "$FILE_PATH"
+
+
+
+
+
+
+
+
+# GET_FILE_OWNER_ID FILE_OWNER_ID $FILE_PATH ; echo $FILE_PATH
+
+GET_FILE_OWNER_ID() {
+  local -n FILE_OWNER_ID="$1"
+  local FILE_PATH="$2"
+  local PARENT_DIR="$(dirname "$FILE_PATH")"
+  DIR_SEARCHABLE "$PARENT_DIR" || return 1
+  FILE_PRESENT "$FILE_PATH" || return 1
+  FILE_OWNER_ID=$(stat -c '%u' "$FILE_PATH")
+}
+
+# GET_FILE_OWNER_NAME FILE_OWNER_NAME $FILE_PATH ; echo $FILE_PATH
+
+GET_FILE_OWNER_NAME() {
+  local -n FILE_OWNER_NAME="$1"
+  local FILE_PATH="$2"
+  local PARENT_DIR="$(dirname "$FILE_PATH")"
+  # DIR_SEARCHABLE "$PARENT_DIR" || return 1
+  # FILE_PRESENT "$FILE_PATH" || return 1
+  FILE_OWNER_NAME=$(stat -c '%U' "$FILE_PATH")
+}
+
+
+
+AM_I_OWNER() {
+  local FILE_PATH="$1"
+  GET_FILE_OWNER_ID FILE_OWNER_ID $FILE_PATH
+  [[ $UID -eq $FILE_OWNER_ID ]] || {
+    return 1
+  }
+}
+
+FILE_OWNED() {
+  local FILE_PATH="$1"
+  local USER_ID="$(id -u)"
+  local FILE_OWNER_ID
+  GET_FILE_OWNER_ID "$FILE_PATH" FILE_OWNER_ID || return 1
+  [[ "$USER_ID" -eq "$FILE_OWNER_ID" ]] || {
+    local FILE_OWNER_NAME
+    GET_FILE_OWNER_NAME "$FILE_PATH" FILE_OWNER_NAME || return 1
+    ERROR_MSG="${FILE_PATH} File OWNER IS ${FILE_OWNER_NAME}"
+    return 1
+  }
+}
+
+FILE_PERM
+
+SET_FILE_PERM
+
+
+
+
+stat -c '%a' "$PARENT_DIR"
+
+
+
+
+APP_INSTALLED() {
+  local APP_NAME="$1"
+  [[ -n "$APP_NAME" ]] || {
+    ERROR_MSG="Application Not Specified"
+    return 1
+  }
+  command -v "$APP_NAME" >/dev/null 2>&1 || {
+    ERROR_MSG="${APP_NAME} Application Not Installed"
+    return 1
+  }
+}
+
+PROMPT_SUDO() {
+  if [[ $EUID -ne 0 ]]
+  then
+    APP_INSTALLED sudo || return 1
+    sudo -v || {
+      ERROR_MSG="SUDO Authentication Failed"
+      return 1
+    }
+  fi
+}
+
+SUDO() {
+  if [[ $EUID -eq 0 ]]
+  then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+APP_AVAILABLE() {
+  local APP_NAME="$1"
+  [[ -n "$APP_NAME" ]] || return 1
+  if ! APP_INSTALLED "$APP_NAME" && ! FILE_EXECUTABLE "./$APP_NAME"
+  then
+    ERROR_MSG="${APP_NAME} Application Not Available"
+    return 1
+  fi
+}
+
+
+# GET_APP_DEB_PKG PKG_NAME $APP_NAME ; echo $PKG_NAME
+
+GET_APP_DEB_PKG() {
+  local -n PKG_NAME="$1"
+  local APP_NAME="$2"
+  if APP_INSTALLED "$APP_NAME"
+  then
+    local APP_PATH=$(command -v $APP_NAME)
+    PKG_NAME=$(dpkg-query --search "$APP_PATH" | cut -d: -f1)
+  else
+    REQUIRE_PKG apt-file || return 1
+    PKG_NAME=$(apt-file search "$APP_NAME" | cut -d: -f1)
+  fi
+}
+
+
+
+
+
+REQUIRE_PKG()
+
+
+
+IS_PKG_INSTALLED() {
+  local PKG_NAME="$1"
+  [[ -n "$PKG_NAME" ]] || {
+    ERROR_MSG="Package Not Specified"
+    return 1
+  }
+  dpkg-query -W -f='${Status}' "$PKG_NAME" 2>/dev/null | grep -q -E "^install ok installed$" || {
+    ERROR_MSG="${PKG_NAME} Package Not Installed"
+    return 1
+  }
+}
+
+is_package_essential() {
+  local package_name="$1"
+  if is_package_installed "$package_name"
+  then
+    if ! dpkg-query -W -f='${Package}\t${Essential}\n' "$package_name" 2>/dev/null | grep -q -E '^Essential[[:space:]]yes$'
+    then
+      exit 1
+    fi
+  else
+    if ! apt-cache show "$package_name" 2>/dev/null | grep -q -E '^Essential[[:space:]]yes$'
+    then
+    fi
+  fi
+}
+
+UPDATE_PKGS_INDEX() {
+  [[ "${PKGS_INDEX_UPDATED:-}" == "true" ]] || {
+    PROMPT_SUDO || return 1
+    export DEBIAN_FRONTEND="noninteractive"
+    export NEEDRESTART_MODE="a"
+    if SUDO apt-get update >/dev/null
+    then
+      export PKGS_INDEX_UPDATED=true
+    else
+      ERROR_MSG="APT Packages Index Update Failed"
+      return 1
+    fi
+  }
+}
+
+INSTALL_PKG() {
+  local PKG_NAME="$1"
+  [[ -n "$PKG_NAME" ]] || {
+    ERROR_MSG="Package Not Specified"
+    return 1
+  }
+  PKG_INSTALLED "$PKG_NAME" || {
+    PROMPT_SUDO || return 1
+    export DEBIAN_FRONTEND="noninteractive"
+    export NEEDRESTART_MODE="a"
+    SUDO apt-get install -y "$PKG_NAME" >/dev/null || {
+      ERROR_MSG="${PKG_NAME} Package Installation Failed"
+      return 1
+    }
+  }
+}
+
+INSTALL_PKG_LOCAL()
+
+
+
+
+
+--allow-remove-essential
+
+
+
+sudo apt-get install --reinstall package_name ( redownloads binaries , keeps config files )
+sudo dpkg-reconfigure package_name ( runs package scripts again , regenerates config file )
+
+
+sudo apt-get purge -y nginx >/dev/null
+sudo apt-get autoremove --purge -y >/dev/null
+
+
+
+
+
+
+
+sudo apt-get install --reinstall openssh-server ( KEEPS CONNECTION )
+or
+sudo apt-get purge openssh-server
+sudo apt-get install openssh-server
+
+
+DEPENDANT_PKGS_LIST=($(apt-cache rdepends --installed libssl3t64 | sed -n 's/^[[:space:]]\+//p'))
+
+
+
+
+
+
+sudo apt-get purge openssh-server openssh-sftp-server openssh-client
+sudo apt-get autoremove --purge
+sudo apt-get install openssh-server openssh-sftp-server openssh-client
+
+
+UPGRADE_PKG() {
+  local PKG_NAME="$1"
+  [[ -n "$PKG_NAME" ]] || {
+    ERROR_MSG="Package Not Specified"
+    return 1
+  }
+  PROMPT_SUDO || return 1
+  export DEBIAN_FRONTEND="noninteractive"
+  export NEEDRESTART_MODE="a"
+  SUDO apt-get install -y "$PKG_NAME" >/dev/null || {
+    ERROR_MSG="${PKG_NAME} Package Upgrade Failed"
+    return 1
+  }
+}
+
+PROVIDE_APPS() {
+  local -n APPS_LIST=$1
+  local -n PKGS_LIST=$2
+  local INDEX_UPDATED=false
+  for APP_INDEX in "${!APPS_LIST[@]}"
+  do
+    local APP_NAME="${APPS_LIST[$APP_INDEX]}"
+    if ! CHECK_APP "$APP_NAME"
+    then
+      local PKG_NAME="${PKGS_LIST[$APP_INDEX]}"
+      if ! CHECK_PKG "$PKG_NAME"
+      then
+        if [[ "$INDEX_UPDATED" == "false" ]]
+        then
+          if ! UPDATE_PKG_INDEX
+          then
+            ERROR_MSG="Package Index Update Failed"
+            return 1
+          else
+            INDEX_UPDATED=true
+          fi
+        fi
+        if ! INSTALL_PKG "$PKG_NAME"
+        then
+          ERROR_MSG="$PKG_NAME Package Installation Failed"
+          return 1
+        fi
+      fi
+    fi
+  done
+}
+
+
+
+===========================================================================================================================================================================================================
+
+
+
+usage() {
+  local EXAMPLE_ARGS="make"
+  printf " %s ${EXAMPLE_ARGS}\n" "$0"
+}
+
+if [[ $# -eq 0 ]]
+then
+  usage
+  exit 1
+fi
+
+APPS_LIST=("make" "dig")
+PKGS_LIST=("build-essential" "dnsutils")
+PROVIDE_APPS APPS_LIST PKGS_LIST
+
+
+
+===========================================================================================================================================================================================================
+
+
+
+
+
+

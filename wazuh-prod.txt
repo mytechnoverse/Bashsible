@@ -1,0 +1,591 @@
+
+
+
+openssl version check ( candidate )
+
+package being availabe 
+
+
+(
+    set -Eeuo pipefail
+    shopt -s inherit_errexit
+    [[ -v apt_index_update_status ]] || apt_index_update_status=0
+
+    declare -A apt_repo_dependencies_official_dictionary=(
+        [gpgv]='gpgv|'
+        [debian-archive-keyring]='|'
+    )
+
+    declare -A apt_repo_dependencies_external_dictionary=(
+        [curl]='curl|'
+        [ca-certificates]='|'
+        [gpg]='gpg|--no-install-recommends'
+    )
+
+    ensure_application() {
+        local -n apt_index_update_status_ref=$1
+        local this_application_package=$2
+        local this_application_binary=${3-}
+        local this_application_package_options=${4-}
+        [[ $(dpkg-query --show --showformat='${Status}' $this_application_package 2>/dev/null) == 'install ok installed' ]] || {
+            (( apt_index_update_status_ref )) || {
+                apt-get --quiet=2 -o Acquire::Retries=0 -o Acquire::http::Timeout=300 -o Acquire::https::Timeout=300 --error-on=any update || {
+                    printf '%s\n' "apt index update failed error"
+                    return 1
+                }
+                apt_index_update_status_ref=1
+            }
+            local -a this_application_package_options_list=()
+            [[ -z "$this_application_package_options" ]] || {
+                read -r -a this_application_package_options_list <<< "$this_application_package_options"
+            }
+            DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 \
+            -o Acquire::Retries=0 -o Acquire::http::Timeout=300 -o Acquire::https::Timeout=300 \
+            --assume-yes "${this_application_package_options_list[@]}" install $this_application_package || {
+                printf '%s\n' "package ( ${this_application_package} ) install error"
+                return 1
+            }
+        }
+        [[ -z "$this_application_binary" ]] || {
+            command -v $this_application_binary >/dev/null || {
+                printf '%s\n' "binary ( ${this_application_binary} ) not found in PATH error"
+                return 1
+            }
+        }
+    }
+
+    ensure_dependencies_dictionary() {
+        local -n apt_index_update_status_ref=$1
+        local -n dependencies_dictionary=$2
+        for this_application_package in "${!dependencies_dictionary[@]}"
+        do
+            local this_application_properties="${dependencies_dictionary[$this_application_package]}"
+            local this_application_binary
+            local this_application_package_options
+            IFS='|' read -r this_application_binary this_application_package_options <<< "$this_application_properties"
+            ensure_application "${!apt_index_update_status_ref}" $this_application_package $this_application_binary "$this_application_package_options"
+        done
+    }
+)
+
+
+
+
+exit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+apt_repo_debian_dependency_packages=
+
+apt_repo_external_dependency_packages=
+
+
+
+
+
+jq
+gawk
+
+nftables
+
+iproute2
+
+openssl
+chrony
+
+
+
+
+
+
+
+
+
+
+
+#######################################################################################################################################################
+
+### openssl 4 install :
+
+
+
+application_name='openssl'
+application_version_min='4.0.0'
+application_binary='openssl'
+source_package_url='https://github.com/openssl/openssl/releases/download/openssl-4.0.2/openssl-4.0.2.tar.gz'
+source_package_build_dependencies=(curl ca-certificates musl-tools build-essential perl libtext-template-perl)
+source_package_cpp_flags='-idirafter /usr/include -idirafter /usr/include/x86_64-linux-gnu'
+source_package_configure_options=(--prefix=/nonexistent --openssldir=/nonexistent linux-x86_64 no-shared no-module no-async no-dso -static)
+source_package_compile_prefix='apps/'
+package_name='openssl'
+
+application_version_system_candidate=''
+(( apt_is_package_index_updated )) || {
+    apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update || printf '%s\n' "error"
+    apt_is_package_index_updated=1
+}
+readarray -t package_policy_output < <(apt-cache policy $package_name)
+output_line_count=${#package_policy_output[@]}
+for (( output_line_index = 0 ; output_line_index < output_line_count ; output_line_index++ ))
+do
+    this_line=${package_policy_output[output_line_index]}
+    [[ "$this_line" == *'Candidate:'* ]] && {
+        read -r -d $'\n' -a this_line_fields <<< "$this_line"
+        application_version_system_candidate=${this_line_fields[1]}
+        break
+    }
+done
+IFS=. read -r -d $'\n' -a application_version_min_list < <(printf '%s' $application_version_min)
+read -r -d $'\n' _ application_version_system_candidate _ < <($application_binary --version)
+IFS=. read -r -d $'\n' -a application_version_system_candidate_list < <(printf '%s' $application_version_system_candidate)
+application_version_min_is_available=0
+application_binary_local="local-${application_binary}"
+application_binary_local_path="/usr/local/bin/${application_binary_local}"
+for version_index in "${!application_version_min_list[@]}"
+do
+    (( application_version_system_candidate_list[$version_index] > application_version_min_list[$version_index] )) && {
+        application_version_min_is_available=1
+        break
+    }
+    (( application_version_system_candidate_list[$version_index] < application_version_min_list[$version_index] )) && break
+done
+(( application_version_min_is_available )) && {
+    application_binary_path=$(command -v $application_binary)
+    if [[ -e $application_binary_local_path ]]
+    then
+        [[ -L $application_binary_local_path || $(readlink -f $application_binary_local_path) == $application_binary_path ]] || {
+            rm $application_binary_local_path
+            ln --symbolic $application_binary_path $application_binary_local_path
+        }
+    else
+        ln --symbolic $application_binary_path $application_binary_local_path
+    fi
+    if [[ $(dpkg-query --show --showformat='${Status}' $package_name) == 'install ok installed' ]]
+    then
+        application_version_system_installed=''
+        [[ $(dpkg-query --show --showformat='${Status}' $package_name) == 'install ok installed' ]] || {
+            package_upstream_version=$(dpkg-query --show --showformat='${Version}' $package_name)
+            IFS='-' read -r -d $'\n' -a package_version_list <<< $package_upstream_version
+            application_version_system_installed=${package_version_list[0]}
+        }
+        if [[ $application_version_system_candidate == $application_version_system_installed ]]
+        then
+            printf '%s\n' "openssl already installed"
+        else
+            DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+            printf '%s\n' "openssl updated"
+        fi
+    else
+        DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+        printf '%s\n' "openssl installed"
+    fi
+}
+
+read -r -d $'\n' _ application_version_local _ < <($application_binary_local_path --version)
+readarray -t -d '.' application_version_local_list < <(printf '%s' $application_version_local)
+application_version_min_is_satisfied=0
+for version_index in "${!application_version_min_list[@]}"
+do
+    (( application_version_local_list[$version_index] > application_version_min_list[$version_index] )) && {
+        application_version_min_is_satisfied=1
+        break
+    }
+    (( application_version_local_list[$version_index] < application_version_min_list[$version_index] )) && break
+done
+if (( application_version_min_is_satisfied ))
+then
+    printf '%s\n' "openssl already installed"
+else
+    rm $application_binary_local_path
+fi
+
+for package_name in "${source_package_build_dependencies[@]}"
+do
+    [[ $(dpkg-query --show --showformat='${Status}' $package_name) == 'install ok installed' ]] || {
+        DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+    }
+done
+source_package_build_path="$(mktemp -d)/"
+source_package_path="${source_package_build_path}${application_name}.tar"
+curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --url $source_package_url --output $source_package_path || printf '%s\n' "error"
+tar --extract --strip-components=1 --directory $source_package_build_path --file $source_package_path
+source_package_configure_path="${source_package_build_path}Configure"
+CC=musl-gcc CFLAGS=-O2 LDFLAGS=-static CPPFLAGS="$source_package_cpp_flags" $source_package_configure_path "${source_package_configure_options[@]}" >/dev/null || printf '%s\n' "error"
+cpu_core_count=$(nproc)
+make --jobs $cpu_core_count >/dev/null || printf '%s\n' "error"
+source_package_compile_path="${source_package_build_path}${source_package_compile_prefix}${application_binary}"
+strip --strip-all $source_package_compile_path
+cp $source_package_compile_path $application_binary_local_path
+[[ $(stat -c '%U %G' $application_binary_local_path) == "root root" ]] || chown root:root $application_binary_local_path
+[[ $(stat -c '%a' $application_binary_local_path) == 755 ]] || chmod 755 $application_binary_local_path
+rm --recursive $source_package_build_path
+command -v $application_binary_local >/dev/null && printf '%s\n' "openssl installed"
+
+#######################################################################################################################################################
+
+### yq go install :
+
+[[ -v apt_is_package_index_updated ]] || apt_is_package_index_updated=0
+[[ -v debian_version_name ]] || debian_version_name=$(source /etc/os-release && echo "$VERSION_CODENAME")
+
+application_name='yq'
+package_name='yq-go'
+apt_repo_name='debian-backports'
+apt_repo_key_package='debian-archive-keyring'
+apt_repo_url='http://deb.debian.org/debian/'
+apt_repo_suite="${debian_version_name}-backports"
+apt_repo_component='main'
+apt_repo_origin='Debian'
+
+(( apt_is_package_index_updated )) || {
+    apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update || printf '%s\n' "error"
+}
+apt_repo_parameters="${apt_repo_url} ${apt_repo_suite} ${apt_repo_component} yes"
+readarray -t apt_sources_parameters_list < <(apt-get indextargets --format '$(REPO_URI) $(SUITE) $(COMPONENT) $(TRUSTED)' "Created-By: Packages")
+apt_repo_is_already_configured=0
+for apt_source_parameters in "${apt_sources_parameters_list[@]}"
+do
+    [[ "$apt_repo_parameters" == "$apt_source_parameters" ]] && {
+        apt_repo_is_already_configured=1
+        break
+    }
+done
+(( apt_repo_is_already_configured )) || {
+    [[ $(dpkg-query --show --showformat='${Status}' $apt_repo_key_package) == 'install ok installed' ]] || {
+        DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $apt_repo_key_package || printf '%s\n' "error"
+    }
+    apt_repo_public_key_path='/usr/share/keyrings/debian-archive-keyring.pgp'
+    apt_repo_sources_path="/etc/apt/sources.list.d/${apt_repo_name}.sources"
+    read -r -d $'\x1c' apt_repo_sources <<-EOF
+        Types: deb
+        URIs: $apt_repo_url
+        Suites: $apt_repo_suite
+        Components: $apt_repo_component
+        Signed-By: $apt_repo_public_key_path
+    $(printf '\x1c')
+    EOF
+    read -r apt_repo_sources_digest _ < <(sha256sum < <(printf '%s' "$apt_repo_sources"))
+    [[ -f $apt_repo_sources_path ]] || touch $apt_repo_sources_path
+    [[ $(stat -c '%U %G' $apt_repo_sources_path) == "root root" ]] || chown root:root $apt_repo_sources_path
+    [[ $(stat -c '%a' $apt_repo_sources_path) == 644 ]] || chmod 644 $apt_repo_sources_path
+    sha256sum --check --status <(printf '%s  %s\n' $apt_repo_sources_digest $apt_repo_sources_path) || printf '%s' "$apt_repo_sources" > $apt_repo_sources_path
+    read -r -d $'\x1c' apt_repo_preferences <<-EOF
+        Package: $package_name
+        Pin: release o=${apt_repo_origin},a=${apt_repo_suite}
+        Pin-Priority: 900
+    $(printf '\x1c')
+    EOF
+    read -r apt_repo_preferences_digest _ < <(sha256sum < <(printf '%s' "$apt_repo_preferences"))
+    apt_repo_preferences_path="/etc/apt/preferences.d/${apt_repo_name}.pref"
+    [[ -f $apt_repo_preferences_path ]] || touch $apt_repo_preferences_path
+    [[ $(stat -c '%U %G' $apt_repo_preferences_path) == "root root" ]] || chown root:root $apt_repo_preferences_path
+    [[ $(stat -c '%a' $apt_repo_preferences_path) == 644 ]] || chmod 644 $apt_repo_preferences_path
+    sha256sum --check --status <(printf '%s  %s\n' $apt_repo_preferences_digest $apt_repo_preferences_path) || printf '%s' "$apt_repo_preferences" > $apt_repo_preferences_path
+    apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update || printf '%s\n' "error"
+    readarray -t package_policy_output < <(apt-cache policy $package_name)
+    output_line_count=${#package_policy_output[@]}
+    package_prefered_repo_url=''
+    for (( output_line_index = 0 ; output_line_index < output_line_count ; output_line_index++ ))
+    do
+    this_line=${package_policy_output[output_line_index]}
+    [[ "$this_line" == *'Candidate:'* ]] && {
+        target_line_index=$((output_line_index + 3))
+        target_line=${package_policy_output[$target_line_index]}
+        read -r -d $'\n' -a target_line_fields <<< "$target_line"
+        package_prefered_repo_url=${target_line_fields[1]}
+        break
+    }
+    done
+    [[ $package_prefered_repo_url == $apt_repo_url ]] || printf '%s\n' "error"
+}
+
+if command -v $application_name >/dev/null
+then
+    application_install_path=$(command -v $application_name)
+    readarray -t -d ':' application_dpkg_query < <(dpkg-query --search $application_install_path)
+    parent_package_name=${application_dpkg_query[0]}
+    if [[ $parent_package_name == $package_name ]]
+    then
+        printf '%s\n' "yq-go already installed"
+    else
+        DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 --assume-yes purge $parent_package_name
+        DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 --assume-yes autoremove
+        DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+        printf '%s\n' "yq-go installed"
+    fi
+else
+    DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+    printf '%s\n' "yq-go installed"
+fi
+
+
+apt install whois
+
+
+
+password='xyz'
+
+wazuh_indexer_users_file_path='/etc/wazuh-indexer/opensearch-security/internal_users.yml'
+wazuh_indexer_users_file="$(<$wazuh_indexer_users_file_path)"
+readarray -t -d $'\n' wazuh_indexer_users < <(yq eval '. | keys | .[] | select(. != "_meta")' - < <(printf '%s\n' "$wazuh_indexer_users_file"))
+
+for wazuh_indexer_user in "${wazuh_indexer_users[@]}"
+do
+    wazuh_indexer_user_password=$(local-openssl mac -digest sha256 -macopt keyfile:<(printf '%s\n' "$password") -in <(printf '%s' "wazuh:${wazuh_indexer_user}") HMAC)
+    wazuh_indexer_user_password_hash=$(mkpasswd --method=bcrypt --rounds=12 --stdin < <(printf '%s' "$wazuh_indexer_user_password"))
+    yq_query_password_change=".${wazuh_indexer_user}.hash = strenv(wazuh_indexer_user_password_hash)"
+    wazuh_indexer_users_file=$(yq -i "$yq_query_password_change" < <(printf '%s\n' "$wazuh_indexer_users_file"))
+done
+
+printf '%s\n' "$wazuh_indexer_users_file" > $wazuh_indexer_users_file_path
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+apt install curl ca-certificates gnupg2
+
+debian_version_name=$(source /etc/os-release && echo "$VERSION_CODENAME")
+
+package_name='nginx'
+
+apt_repo_name='nginx'
+apt_repo_public_key_url='https://nginx.org/keys/nginx_signing.key'
+apt_repo_url='https://nginx.org/packages/debian'
+apt_repo_suite=$debian_version_name
+apt_repo_component='nginx'
+
+apt_repo_public_key_path="/etc/apt/keyrings/${apt_repo_name}-archive-keyring.gpg"
+apt_repo_sources_path="/etc/apt/sources.list.d/${apt_repo_name}.sources"
+
+apt_repo_public_key=$(curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --url "$apt_repo_public_key_url")
+read -r -d $'\n' apt_repo_public_key_header < <(printf '%s\n' "$apt_repo_public_key")
+[[ "$apt_repo_public_key_header" =~ ^-----BEGIN[[:space:]]PGP[[:space:]]PUBLIC[[:space:]]KEY[[:space:]]BLOCK-----$ ]] || printf '%s\n' "error"
+
+gpg --output $apt_repo_public_key_path --dearmor <(printf '%s' "$apt_repo_public_key")
+chown root:root $apt_repo_public_key_path
+chmod 644 $apt_repo_public_key_path
+read -r -d $'\x1c' apt_repo_sources <<-EOF
+	Types: deb
+	URIs: $apt_repo_url
+	Suites: $apt_repo_suite
+	Components: $apt_repo_component
+	Signed-By: $apt_repo_public_key_path
+$(printf '\x1c')
+EOF
+
+printf '%s\n' "$apt_repo_sources" > $apt_repo_sources_path
+chown root:root $apt_repo_sources_path
+chmod 644 $apt_repo_sources_path
+
+apt_repo_preferences_path="/etc/apt/preferences.d/${apt_repo_name}.pref"
+apt_repo_packages_file_url="${apt_repo_url}/dists/${apt_repo_suite}/${apt_repo_component}/binary-amd64/Packages"
+apt_repo_packages_file=$(curl --ipv4 --fail-with-body --silent --show-error --location-trusted --compressed --connect-timeout 3 --url "$apt_repo_packages_file_url")
+
+declare -A packages_dictionary
+apt_repo_preferences_packages=''
+
+while read -r -d $'\n' this_line
+do
+	[[ $this_line =~ ^Package:[[:space:]](.*)$ ]] && {
+		package_name=${BASH_REMATCH[1]}
+		[[ -v packages_dictionary[$package_name] ]] || {
+			apt_repo_preferences_packages+="${package_name} "
+			packages_dictionary[$package_name]=''
+		}
+	}
+done < <(printf '%s\n' "$apt_repo_packages_file")
+
+read -r -d $'\x1c' apt_repo_preferences <<-EOF
+	Package: $apt_repo_preferences_packages
+	Pin: release o=$apt_repo_name
+	Pin-Priority: 900
+$(printf '\x1c')
+EOF
+
+[[ -f $apt_repo_preferences_path ]] || touch $apt_repo_preferences_path
+[[ $(stat -c '%U %G' $apt_repo_preferences_path) == "root root" ]] || chown root:root $apt_repo_preferences_path
+[[ $(stat -c '%a' $apt_repo_preferences_path) == 644 ]] || chmod 644 $apt_repo_preferences_path
+
+printf '%s\n' "$apt_repo_preferences" > $apt_repo_preferences_path
+
+[[ $(dpkg-query --show --showformat='${Status}' $package_name) == 'install ok installed' ]] || {
+  apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update || printf '%s\n' "error"
+  DEBIAN_FRONTEND=noninteractive apt-get --quiet=2 -o Acquire::Retries=0 --assume-yes install $package_name || printf '%s\n' "error"
+}
+
+nginx_prefix='/etc/nginx/'
+
+nginx_tls_prefix="${nginx_prefix}tls/"
+
+[[ -d $nginx_tls_prefix ]] || mkdir $nginx_tls_prefix
+[[ $(stat -c '%U %G' $nginx_tls_prefix) == "root root" ]] || chown root:root $nginx_tls_prefix
+[[ $(stat -c '%a' $nginx_tls_prefix) == 700 ]] || chmod 700 $nginx_tls_prefix
+
+nginx_service_name='xyz.com'
+
+nginx_service_tls_prefix="${nginx_tls_prefix}${nginx_service_name}/"
+
+[[ -d $nginx_service_tls_prefix ]] || mkdir $nginx_service_tls_prefix
+[[ $(stat -c '%U %G' $nginx_service_tls_prefix) == "root root" ]] || chown root:root $nginx_service_tls_prefix
+[[ $(stat -c '%a' $nginx_service_tls_prefix) == 700 ]] || chmod 700 $nginx_service_tls_prefix
+
+nginx_service_tls_key_path="${nginx_service_tls_prefix}${nginx_service_name}.key"
+
+[[ -f $nginx_service_tls_key_path ]] || touch $nginx_service_tls_key_path
+[[ $(stat -c '%U %G' $nginx_service_tls_key_path) == "root root" ]] || chown root:root $nginx_service_tls_key_path
+[[ $(stat -c '%a' $nginx_service_tls_key_path) == 600 ]] || chmod 600 $nginx_service_tls_key_path
+
+nginx_service_tls_pass_file=$(openssl rand -hex 32)
+
+nginx_service_tls_key=$(openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 -saltlen 16 -iter 1000000 -in <(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256) -passout file:<(printf '%s\n' "$nginx_service_tls_pass_file"))
+
+printf '%s\n' "$nginx_service_tls_key" > $nginx_service_tls_key_path
+
+[[ -f /var/lib/systemd/credential.secret ]] || systemd-creds setup
+
+nginx_systemd_config_files_prefix='/etc/systemd/system/nginx.service.d/'
+
+[[ -d $nginx_systemd_config_files_prefix ]] || mkdir -p $nginx_systemd_config_files_prefix
+[[ $(stat -c '%U %G' $nginx_systemd_config_files_prefix) == "root root" ]] || chown root:root $nginx_systemd_config_files_prefix
+[[ $(stat -c '%a' $nginx_systemd_config_files_prefix) == 755 ]] || chmod 755 $nginx_systemd_config_files_prefix
+
+nginx_service_tls_cred_file=$(systemd-creds encrypt --name=$nginx_service_name - - < <(printf '%s' "$nginx_service_tls_pass_file"))
+nginx_service_tls_cred_file_path="${nginx_service_tls_prefix}${nginx_service_name}.cred"
+
+[[ -f $nginx_service_tls_cred_file_path ]] || touch $nginx_service_tls_cred_file_path
+[[ $(stat -c '%U %G' $nginx_service_tls_cred_file_path) == "root root" ]] || chown root:root $nginx_service_tls_cred_file_path
+[[ $(stat -c '%a' $nginx_service_tls_cred_file_path) == 600 ]] || chmod 600 $nginx_service_tls_cred_file_path
+
+read -r -d $'\x1c' nginx_service_systemd_config_file <<-EOF
+    [Service]
+    LoadCredentialEncrypted=${nginx_service_name}:${nginx_service_tls_cred_file_path}
+$(printf '\x1c')
+EOF
+
+nginx_service_systemd_config_file_path="${nginx_systemd_config_files_prefix}${nginx_service_name}.conf"
+
+[[ -f $nginx_service_systemd_config_file_path ]] || touch $nginx_service_systemd_config_file_path
+[[ $(stat -c '%U %G' $nginx_service_systemd_config_file_path) == "root root" ]] || chown root:root $nginx_service_systemd_config_file_path
+[[ $(stat -c '%a' $nginx_service_systemd_config_file_path) == 644 ]] || chmod 644 $nginx_service_systemd_config_file_path
+
+printf '%s\n' "$nginx_service_systemd_config_file" > $nginx_service_systemd_config_file_path
+
+nginx_http_config_files_prefix='/etc/nginx/conf.d/'
+
+nginx_service_http_config_file_path="${nginx_http_config_files_prefix}${nginx_service_name}.conf"
+
+[[ -f $nginx_service_http_config_file_path ]] || touch $nginx_service_http_config_file_path
+[[ $(stat -c '%U %G' $nginx_service_http_config_file_path) == "root root" ]] || chown root:root $nginx_service_http_config_file_path
+[[ $(stat -c '%a' $nginx_service_http_config_file_path) == 644 ]] || chmod 644 $nginx_service_http_config_file_path
+
+nginx_service_tls_crt_path="${nginx_service_tls_prefix}${nginx_service_name}.crt"
+
+[[ -f $nginx_service_tls_crt_path ]] || touch $nginx_service_tls_crt_path
+[[ $(stat -c '%U %G' $nginx_service_tls_crt_path) == "root root" ]] || chown root:root $nginx_service_tls_crt_path
+[[ $(stat -c '%a' $nginx_service_tls_crt_path) == 644 ]] || chmod 644 $nginx_service_tls_crt_path
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+wazuh_server_api_port_external='55000'
+wazuh_server_api_port_internal='55000'
+
+
+read -r -d $'\x1c' nginx_service_http_config_file <<-EOF
+    server {
+        listen ${wazuh_server_api_port_external} ssl;
+        server_name ${nginx_service_name};
+        ssl_certificate ${nginx_service_tls_crt_path};
+        ssl_certificate_key ${nginx_service_tls_key_path};
+        ssl_password_file /run/credentials/nginx.service/${nginx_service_name};
+        proxy_pass http://127.0.0.1:${wazuh_server_api_port_internal};
+        ssl_verify_client off;
+        ssl_protocols TLSv1.3;
+        ssl_conf_command Ciphersuites TLS_AES_128_GCM_SHA256;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    server {
+        listen 80;
+        server_name ${nginx_service_name};
+        return 301 https://\$host\$request_uri;
+    }
+$(printf '\x1c')
+EOF
+
+printf '%s\n' "$nginx_service_http_config_file" > $nginx_service_http_config_file_path
+
+systemctl daemon-reload
+
+systemctl restart nginx
+
+
+
+
+
+
+
+
+
+
+
+
+
+==========================================================================================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

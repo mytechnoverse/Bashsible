@@ -1,0 +1,57 @@
+
+=== Query SNMP Hosts :
+
+Data Collection :: hosts :: sort by templates ( cisco ios by snmp )
+
+=== Add SNMP Hosts :
+
+Data collection :: Hosts :: Create host
+
+=== Test SNMP Connectivity :
+
+# 9200s , 9300s : SHA256 , AES256
+# others : SHA1 , AES128
+
+sudo apt install snmp nmap
+
+switch_snmp_ip_address='172.16.1.2'
+switch_snmp_user_name='xyz'
+switch_snmp_authentication_password='xyz'
+switch_snmp_encryption_password='xyz'
+switch_snmp_authentication_algorithm={ 'SHA-256' | 'SHA' }
+switch_snmp_encryption_algorithm={ 'AES-256' | 'AES' }
+
+read -r -d $'\x1c' snmp_walk_query <<-EOF
+	timeout 5
+	retries 1
+	defVersion 3
+	defSecurityLevel authPriv
+	defSecurityName $switch_snmp_user_name
+	defAuthType $switch_snmp_authentication_algorithm
+	defAuthPassphrase $switch_snmp_authentication_password
+	defPrivType $switch_snmp_encryption_algorithm
+	defPrivPassphrase $switch_snmp_encryption_password
+$(printf '\x1c')
+EOF
+
+snmpwalk --config-file=<(printf '%s\n' "$snmp_walk_query") "$switch_snmp_ip_address" .1
+
+==== Cisco Switch Config :
+
+ip access-list standard ZABBIX_ACL
+permit host 172.16.1.2
+deny any log
+
+no snmp-server community public
+no snmp-server community private
+no snmp-server enable traps
+
+snmp-server view ZABBIX_VIEW iso included
+snmp-server group ZABBIX_GROUP v3 priv read ZABBIX_VIEW access ZABBIX_ACL
+snmp-server user ZABBIX_USER ZABBIX_GROUP v3 auth { sha | sha256 } { Auth Password } priv aes { 128 | 256 } { Encryption Password }
+
+show snmp
+show snmp user
+show snmp group
+show snmp view
+show running-config | section snmp
