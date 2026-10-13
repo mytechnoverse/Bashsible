@@ -26,6 +26,8 @@ dpkg-query --show --showformat='${Status}\n' nftables
 apt install nftables
 dpkg-query --show --showformat='${Status}\n' procps
 apt install procps
+dpkg-query --show --showformat='${Status}\n' iproute2
+apt install iproute2
 mkdir -p /etc/nftables/conf.d/
 ```
 
@@ -205,4 +207,167 @@ journalctl --dmesg --grep='nftables_log_prefix' --lines=10
 
 
 
+
+
+
+
+Create `/etc/sysctl.d/10-syn-proxy-ipv4.conf` :
+
+```ini
+net.netfilter.nf_conntrack_tcp_loose = 0
+```
+
+```bash
+sysctl --system
+```
+
+Create `/root/syn-proxy.sh` :
+
+```bash
+#!/usr/bin/bash
+set -Eeuo pipefail
+interface_name=$1
+display_values() {
+    printf '%s\n' \
+    "TCP Port Number : $tcp_port_number" \
+    "TCP over IPv4 MSS ( Expected ) : $tcp_over_ipv4_mss_expected" \
+    "TCP over IPv4 MSS ( Advertised ) : $tcp_over_ipv4_mss_advertised" \
+    "TCP over IPv6 MSS ( Expected ) : $tcp_over_ipv6_mss_expected" \
+    "TCP over IPv6 MSS ( Advertised ) : $tcp_over_ipv6_mss_advertised" \
+    "TCP Window Scale ( Expected ) : $tcp_window_scale_expected" \
+    "TCP Window Scale ( Advertised ) : $tcp_window_scale_advertised"
+    exit 0
+}
+interface_mtu_path="/sys/class/net/${interface_name}/mtu"
+interface_mtu=$( < "$interface_mtu_path" )
+ipv4_headers=20
+ipv6_headers=40
+tcp_headers=20
+tcp_over_ipv4_headers=$((ipv4_headers + tcp_headers))
+tcp_over_ipv6_headers=$((ipv6_headers + tcp_headers))
+tcp_over_ipv4_mss_expected=$((interface_mtu - tcp_over_ipv4_headers))
+tcp_over_ipv6_mss_expected=$((interface_mtu - tcp_over_ipv6_headers))
+tcp_window_scaling_enabled=$(sysctl --values net.ipv4.tcp_window_scaling)
+tcp_window_scale_expected=0
+(( tcp_window_scaling_enabled )) || display_values
+read -r _ _ tcp_max_buffer_auto < <(sysctl --values net.ipv4.tcp_rmem)
+tcp_max_buffer_system=$(sysctl --values net.core.rmem_max)
+declare tcp_raw_buffer
+if (( tcp_max_buffer_auto > tcp_max_buffer_system ))
+then
+    tcp_raw_buffer=$tcp_max_buffer_auto
+else
+    tcp_raw_buffer=$tcp_max_buffer_system
+fi
+tcp_effective_buffer=$(( tcp_raw_buffer / 2 ))
+while [[ $tcp_effective_buffer -gt 65535 ]] && [[ $tcp_window_scale_expected -lt 14 ]]
+do
+    tcp_effective_buffer=$(( tcp_effective_buffer / 2 ))
+    tcp_window_scale_expected=$(( tcp_window_scale_expected + 1 ))
+done
+display_values
+```
+
+
+
+
+
+
+tcp_socket_ipv4=$(ss --tcp --info state established 'sport = :22')
+
+
+tcp_socket_ipv6
+
+
+
+
+check if there is an established connection first
+
+
+declare advmss
+declare wscale
+
+
+
+while IFS= read -r line; do
+    for part in $line; do
+        if [[ $part == advmss:* ]]; then
+            IFS=: read -r _ advmss <<<"$part"
+        elif [[ $part == wscale:* ]]; then
+            IFS=: read -r _ rest <<<"$part"
+            IFS=, read -r wscale _ <<<"$rest"
+        fi
+    done
+    if [[ -n $advmss && -n $wscale ]]; then
+        break
+    fi
+done <<<"$tcp_socket_info"
+
+if [[ -z $advmss || -z $wscale ]]; then
+    printf 'Could not find advmss/wscale in ss output\n' >&2
+    exit 1
+fi
+
+
+
+
+local service :
+
+ss --tcp --memory --info state established 'sport = :22'
+( advmss , first number in wscale:X,Y )
+
+
+
+
+
+
+
+```bash
+bash /root/syn-proxy.sh eth0
+
+```
+
+
+timestamp
+sack-perm
+
+syn proxy for 22 , 80 , 443
+
+table ip syn_proxy {
+    chain prerouting {
+        type filter hook prerouting priority -300; policy accept;
+        tcp dport 22 tcp flags syn notrack
+    }
+    chain input {
+        type filter hook input priority 0; policy accept;
+        tcp dport 22 ct state invalid,untracked synproxy mss 1460 wscale 7 timestamp sack-perm
+        ct state invalid drop
+    }
+}
+
+
+use ( ct count ) with per source limiting new connections
+limit number of simultaneous tcp connenctions from each source ip to port 22 , 80 , 443 tcp
+1 simultaneous tcp connection to ssh
+8 simultaneous connections to same http Host header for http
+8 simultaneous connections to same sni for https
+
+also define per source limit for icmp and icmpv6
+
+tcp flags '& (fin|syn|rst|psh|ack|urg) == fin|psh|urg' drop
+
+
+
+tcp flags & (fin|syn) == (fin|syn) drop
+tcp flags & (syn|rst) == (syn|rst) drop
+tcp flags & (fin|rst) == (fin|rst) drop
+tcp flags & (fin|syn|rst|ack) == 0 drop
+
+
+
+
+
 tcp connection logging : log flags tcp options
+tcp flooding , icmp flooding , http flooding
+
+
