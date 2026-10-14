@@ -40,20 +40,48 @@ delete table inet firewall
 include "/etc/nftables/conf.d/*.nft"
 ```
 
+
+sysctl net.ipv4.tcp_ecn
+
+
+
+
+
+
+
+
 Create `/etc/nftables/conf.d/00-server-static-ipv4.nft` :
 
 ```text
+
+define tcp_ipv4_mss = tcp_ipv4_mss
+define tcp_window_scale = tcp_window_scale
+
 table inet firewall {
+
+    set input-drop-invalid-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
+    set input-drop-default-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
+    set input-access-ssh-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
+    set input-access-http-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
+    set input-access-https-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
+
+    chain tcp_syn_proxy {
+        type filter hook prerouting priority -300; policy accept;
+        tcp dport 22 tcp flags & (fin|syn|rst|ack) == syn notrack
+    }
+    
     chain input {
         type filter hook input priority 0; policy drop;
-        iifname "lo" accept
+        iif lo accept
         meta nfproto ipv6 drop
-        ct state invalid meta nfproto ipv4 meter input-invalid-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-invalid-ipv4 : " level warning
+        meta nfproto ipv4 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv4_mss wscale tcp_window_scale timestamp sack-perm
+        ct state invalid meta nfproto ipv4 meter input-invalid-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-drop-invalid-ipv4 : " level warning
         ct state invalid meta nfproto ipv4 counter drop
         ct state established,related accept
         icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
         icmp type echo-request meter input-ping-meter-ipv4 { ip saddr limit rate 1/second } accept
         icmp type echo-request counter drop
+        meta nfproto ipv4 tcp dport 22 ct state new accept
         meta nfproto ipv4 meter input-default-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-default-ipv4 : " level warning
         meta nfproto ipv4 counter drop
     }
@@ -74,7 +102,7 @@ Create `/etc/nftables/conf.d/00-server-static-dual.nft` :
 table inet firewall {
     chain input {
         type filter hook input priority 0; policy drop;
-        iifname "lo" accept
+        iif lo accept
         ct state invalid meta nfproto ipv4 meter input-invalid-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-invalid-ipv4 : " level warning
         ct state invalid meta nfproto ipv4 counter drop
         ct state invalid meta nfproto ipv6 meter input-invalid-meter-ipv6 { ip6 saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-invalid-ipv6 : " level warning
@@ -108,7 +136,7 @@ Create `/etc/nftables/conf.d/00-server-dhcp-ipv4.nft` :
 table inet firewall {
     chain input {
         type filter hook input priority 0; policy drop;
-        iifname "lo" accept
+        iif lo accept
         meta nfproto ipv6 drop
         ct state invalid meta nfproto ipv4 meter input-invalid-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-invalid-ipv4 : " level warning
         ct state invalid meta nfproto ipv4 counter drop
@@ -137,7 +165,7 @@ Create `/etc/nftables/conf.d/00-server-dhcp-dual.nft` :
 table inet firewall {
     chain input {
         type filter hook input priority 0; policy drop;
-        iifname "lo" accept
+        iif lo accept
         ct state invalid meta nfproto ipv4 meter input-invalid-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-invalid-ipv4 : " level warning
         ct state invalid meta nfproto ipv4 counter drop
         ct state invalid meta nfproto ipv6 meter input-invalid-meter-ipv6 { ip6 saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-invalid-ipv6 : " level warning
@@ -204,12 +232,57 @@ journalctl --dmesg --grep='nftables_log_prefix' --lines=10
 
 
 
+sudo journalctl -b -o short-monotonic   -u systemd-modules-load.service   -u systemd-sysctl.service
+[sudo: authenticate] Password:
+[    9.901230] XXX systemd[1]: systemd-sysctl.service: Deactivated successfully.
+[    9.901401] XXX systemd[1]: Stopped systemd-sysctl.service - Apply Kernel Variables.
+[    9.902060] XXX systemd[1]: systemd-modules-load.service: Deactivated successfully.
+[    9.902250] XXX systemd[1]: Stopped systemd-modules-load.service - Load Kernel Modules.
+[   12.144427] XXX systemd[1]: Starting systemd-sysctl.service - Apply Kernel Variables...
+[   12.209525] XXX systemd[1]: Finished systemd-sysctl.service - Apply Kernel Variables.
+XXX@XXX:~$ sudo grep -E 'CONFIG_NF_CONNTRACK=' /boot/config-$(uname -r)
+CONFIG_NF_CONNTRACK=m
+XXX@XXX:~$ sudo journalctl -b -k -o short-monotonic   | grep -iE 'nf_conntrack|nft_ct'
+XXX@XXX:~$ sudo systemd-analyze critical-chain systemd-sysctl.service
+The time when unit became active or started is printed after the "@" character.
+The time the unit took to start is printed after the "+" character.
+
+systemd-sysctl.service +65ms
+└─systemd-modules-load.service @1.592s +115ms
+  └─systemd-journald.socket
+    └─system.slice
+      └─-.slice
 
 
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mkdir /etc/modules-load.d/
+
+Create `/etc/modules-load.d/nftables-connection-tracking.conf` :
+
+```text
+nf_conntrack
+```
 
 Create `/etc/sysctl.d/10-syn-proxy-ipv4.conf` :
 
@@ -218,6 +291,7 @@ net.netfilter.nf_conntrack_tcp_loose = 0
 ```
 
 ```bash
+modprobe nf_conntrack
 sysctl --system
 ```
 
@@ -228,14 +302,7 @@ Create `/root/syn-proxy.sh` :
 set -Eeuo pipefail
 interface_name=$1
 display_values() {
-    printf '%s\n' \
-    "TCP Port Number : $tcp_port_number" \
-    "TCP over IPv4 MSS ( Expected ) : $tcp_over_ipv4_mss_expected" \
-    "TCP over IPv4 MSS ( Advertised ) : $tcp_over_ipv4_mss_advertised" \
-    "TCP over IPv6 MSS ( Expected ) : $tcp_over_ipv6_mss_expected" \
-    "TCP over IPv6 MSS ( Advertised ) : $tcp_over_ipv6_mss_advertised" \
-    "TCP Window Scale ( Expected ) : $tcp_window_scale_expected" \
-    "TCP Window Scale ( Advertised ) : $tcp_window_scale_advertised"
+    printf '%s\n' "TCP over IPv4 MSS : $tcp_over_ipv4_mss" "TCP over IPv6 MSS : $tcp_over_ipv6_mss" "TCP Window Scale : $tcp_window_scale"
     exit 0
 }
 interface_mtu_path="/sys/class/net/${interface_name}/mtu"
@@ -245,10 +312,10 @@ ipv6_headers=40
 tcp_headers=20
 tcp_over_ipv4_headers=$((ipv4_headers + tcp_headers))
 tcp_over_ipv6_headers=$((ipv6_headers + tcp_headers))
-tcp_over_ipv4_mss_expected=$((interface_mtu - tcp_over_ipv4_headers))
-tcp_over_ipv6_mss_expected=$((interface_mtu - tcp_over_ipv6_headers))
+tcp_over_ipv4_mss=$((interface_mtu - tcp_over_ipv4_headers))
+tcp_over_ipv6_mss=$((interface_mtu - tcp_over_ipv6_headers))
 tcp_window_scaling_enabled=$(sysctl --values net.ipv4.tcp_window_scaling)
-tcp_window_scale_expected=0
+tcp_window_scale=0
 (( tcp_window_scaling_enabled )) || display_values
 read -r _ _ tcp_max_buffer_auto < <(sysctl --values net.ipv4.tcp_rmem)
 tcp_max_buffer_system=$(sysctl --values net.core.rmem_max)
@@ -260,76 +327,80 @@ else
     tcp_raw_buffer=$tcp_max_buffer_system
 fi
 tcp_effective_buffer=$(( tcp_raw_buffer / 2 ))
-while [[ $tcp_effective_buffer -gt 65535 ]] && [[ $tcp_window_scale_expected -lt 14 ]]
+while [[ $tcp_effective_buffer -gt 65535 ]] && [[ $tcp_window_scale -lt 14 ]]
 do
     tcp_effective_buffer=$(( tcp_effective_buffer / 2 ))
-    tcp_window_scale_expected=$(( tcp_window_scale_expected + 1 ))
+    tcp_window_scale=$(( tcp_window_scale + 1 ))
 done
 display_values
 ```
 
-
-
-
-
-
-tcp_socket_ipv4=$(ss --tcp --info state established 'sport = :22')
-
-
-tcp_socket_ipv6
-
-
-
-
-check if there is an established connection first
-
-
-declare advmss
-declare wscale
-
-
-
-while IFS= read -r line; do
-    for part in $line; do
-        if [[ $part == advmss:* ]]; then
-            IFS=: read -r _ advmss <<<"$part"
-        elif [[ $part == wscale:* ]]; then
-            IFS=: read -r _ rest <<<"$part"
-            IFS=, read -r wscale _ <<<"$rest"
-        fi
-    done
-    if [[ -n $advmss && -n $wscale ]]; then
-        break
-    fi
-done <<<"$tcp_socket_info"
-
-if [[ -z $advmss || -z $wscale ]]; then
-    printf 'Could not find advmss/wscale in ss output\n' >&2
-    exit 1
-fi
-
-
-
-
-local service :
-
-ss --tcp --memory --info state established 'sport = :22'
-( advmss , first number in wscale:X,Y )
-
-
-
-
-
-
-
 ```bash
 bash /root/syn-proxy.sh eth0
-
 ```
 
+```bash
+tcp_port_number=22
+ss --ipv4 --tcp --info state established "sport = :${tcp_port_number}"
+ss --ipv6 --tcp --info state established "sport = :${tcp_port_number}"
+```
 
-timestamp
-sack-perm
+- `advmss`
+- `wscale[ 0 ]`
+
+
+
+
+
+
+
+
+
+meta nfproto ipv6 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv6_mss wscale tcp_window_scale timestamp sack-perm
+
+ct state invalid drop
+ct state established,related accept
+iif lo accept
+tcp dport 22 ct state new accept
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+set ssh_conn_v4 {
+    type ipv4_addr
+    flags dynamic
+    size 65535
+}
+
+tcp dport 22 ct state new add @ssh_conn_v4 { ip saddr ct count over 1 } drop
+tcp dport 22 ct state new add @ssh_conn_v6 { ip6 saddr and ffff:ffff:ffff:ffff:: ct count over 1 } drop
+
+
+
+
 
 syn proxy for 22 , 80 , 443
 
