@@ -47,75 +47,94 @@ sets without timeout are sticky ( persists until every connection drops to zero 
 
 
 
-design input default log
-
-logging every connection not packets with access log prefix ??
-
-
-
-
-
-
-
 Create `/etc/nftables/conf.d/00-server-static-ipv4.nft` :
 
 ```text
 table inet firewall {
-    set input-limit-icmp-ipv4 {
+    set input-icmp-connection-limit-exceeded-list-ipv4 {
         type ipv4_addr
         flags dynamic
         size 65536
         timeout 1s
     }
-    set tcp-scanners-list-ipv4 {
+    set input-tcp-invalid-block-list-ipv4 {
         type ipv4_addr
         flags dynamic
         size 65536
         timeout 10m
     }
-    set input-limit-ssh-connections-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
-    }
-    set ssh-bots-list-ipv4 {
+    set input-default-drop-block-list-ipv4 {
         type ipv4_addr
         flags dynamic
         size 65536
         timeout 10m
     }
-    set input-limit-log-drop-default-ipv4 {
+    set input-tcp-22-connection-limit-exceeded-list-ipv4 {
         type ipv4_addr
         flags dynamic
         size 65536
-        timeout 1m
+    }
+    set input-tcp-22-block-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
     }
     chain tcp_syn_proxy {
         type filter hook prerouting priority -300; policy accept;
         tcp dport 22 tcp flags & (fin|syn|rst|ack) == syn notrack
     }
+
+
+
+
+
+        ip saddr @input-tcp-invalid-block-list-ipv4 update @input-tcp-invalid-block-list-ipv4 { ip saddr }
+        ct state invalid meta nfproto ipv4 update @input-tcp-invalid-block-list-ipv4 { ip saddr }
+
+
+
+
+
+
     chain input {
         type filter hook input priority 0; policy drop;
         iif lo accept
         meta nfproto ipv6 drop
-        ip saddr @tcp-scanners-list-ipv4 counter drop
+
+
+        ip saddr @input-tcp-invalid-block-list-ipv4 counter drop
+        ip saddr @input-default-drop-block-list-ipv4 counter drop
+        
         meta nfproto ipv4 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv4_mss wscale tcp_window_scale timestamp sack-perm
-        ct state invalid meta nfproto ipv4 ip saddr != @tcp-scanners-list-ipv4 limit rate 5/minute counter log prefix "nft-input-tcp-scanner-add-ipv4 : " level warning
-        ct state invalid meta nfproto ipv4 update @tcp-scanners-list-ipv4 { ip saddr }
+
+        ct state invalid meta nfproto ipv4 ip saddr != @input-tcp-invalid-block-list-ipv4 limit rate 5/minute counter log prefix "nft-input-tcp-invalid-block-list-ipv4 : " level warning
         ct state invalid meta nfproto ipv4 counter drop
-        ct state established,related accept
+
+
+        ct state established accept
+
         icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
-        icmp type echo-request add @input-limit-icmp-ipv4 { ip saddr limit rate 1/second } accept
+        icmp type echo-request add @input-icmp-connection-limit-exceeded-list-ipv4 { ip saddr limit rate 1/second } accept
         icmp type echo-request drop
-        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @ssh-bots-list-ipv4 counter drop
-        meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 limit rate 5/minute counter log prefix "nft-input-drop-ssh-global-limit-ipv4 : " level warning
+
+        ct state established meta nfproto ipv4 tcp dport 22 ip saddr != @input-tcp-invalid-block-list-ipv4 update @input-tcp-invalid-block-list-ipv4 { ip saddr }
+        
+        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @input-tcp-22-block-list-ipv4 counter drop
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 limit rate 5/minute counter log prefix "nft-input-tcp-22-connection-limit-exceeded-list-ipv4 : " level warning
         meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 counter drop
-        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 ip saddr != @ssh-bots-list-ipv4 limit rate 5/minute counter log prefix "nft-input-ssh-bot-add-ipv4 : " level warning
-        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 add @input-limit-ssh-connections-ipv4 { ip saddr } update @ssh-bots-list-ipv4 { ip saddr }
-        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @input-limit-ssh-connections-ipv4 counter drop
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 ip saddr != @input-tcp-22-block-list-ipv4 limit rate 5/minute counter log prefix "nft-input-tcp-22-block-list-ipv4 : " level warning
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 add @input-tcp-22-connection-limit-exceeded-list-ipv4 { ip saddr } update @input-tcp-22-block-list-ipv4 { ip saddr }
+        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @input-tcp-22-connection-limit-exceeded-list-ipv4 counter drop
         meta nfproto ipv4 tcp dport 22 ct state new accept
-        meta nfproto ipv4 add @input-limit-log-drop-default-ipv4 { ip saddr limit rate 5/minute } log prefix "nft-input-drop-default-ipv4 : " level warning
-        meta nfproto ipv4 counter drop
+
+
+        ct state established meta nfproto ipv4 tcp dport 22 ip saddr != @input-default-drop-block-list-ipv4 update @input-default-drop-block-list-ipv4 { ip saddr }
+
+        ip saddr @input-default-drop-block-list-ipv4 update @input-default-drop-block-list-ipv4 { ip saddr }
+        meta nfproto ipv4 ct state new ip saddr != @input-default-drop-block-list-ipv4 limit rate 5/minute counter log prefix "nft-input-default-drop-block-list-ipv4 : " level warning
+        meta nfproto ipv4 ct state new update @input-default-drop-block-list-ipv4 { ip saddr }
+        meta nfproto ipv4 ct state new counter drop
     }
     chain output {
         type filter hook output priority 0; policy accept;
