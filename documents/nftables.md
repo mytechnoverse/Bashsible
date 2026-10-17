@@ -41,8 +41,15 @@ include "/etc/nftables/conf.d/*.nft"
 ```
 
 
-sysctl net.ipv4.tcp_ecn
 
+
+sets without timeout are sticky ( persists until every connection drops to zero for the ip )
+
+
+
+design input default log
+
+logging every connection not packets with access log prefix ??
 
 
 
@@ -53,36 +60,61 @@ sysctl net.ipv4.tcp_ecn
 Create `/etc/nftables/conf.d/00-server-static-ipv4.nft` :
 
 ```text
-
-define tcp_ipv4_mss = tcp_ipv4_mss
-define tcp_window_scale = tcp_window_scale
-
 table inet firewall {
-
-    set input-drop-invalid-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
-    set input-drop-default-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
-    set input-access-ssh-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
-    set input-access-http-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
-    set input-access-https-ipv4 { type ipv4_addr; flags dynamic; size 65535; timeout 1m; }
-
+    set input-limit-icmp-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 1s
+    }
+    set tcp-scanners-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
+    }
+    set input-limit-ssh-connections-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+    }
+    set ssh-bots-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
+    }
+    set input-limit-log-drop-default-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 1m
+    }
     chain tcp_syn_proxy {
         type filter hook prerouting priority -300; policy accept;
         tcp dport 22 tcp flags & (fin|syn|rst|ack) == syn notrack
     }
-    
     chain input {
         type filter hook input priority 0; policy drop;
         iif lo accept
         meta nfproto ipv6 drop
+        ip saddr @tcp-scanners-list-ipv4 counter drop
         meta nfproto ipv4 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv4_mss wscale tcp_window_scale timestamp sack-perm
-        ct state invalid meta nfproto ipv4 meter input-invalid-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-drop-invalid-ipv4 : " level warning
+        ct state invalid meta nfproto ipv4 ip saddr != @tcp-scanners-list-ipv4 limit rate 5/minute counter log prefix "nft-input-tcp-scanner-add-ipv4 : " level warning
+        ct state invalid meta nfproto ipv4 update @tcp-scanners-list-ipv4 { ip saddr }
         ct state invalid meta nfproto ipv4 counter drop
         ct state established,related accept
         icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
-        icmp type echo-request meter input-ping-meter-ipv4 { ip saddr limit rate 1/second } accept
-        icmp type echo-request counter drop
+        icmp type echo-request add @input-limit-icmp-ipv4 { ip saddr limit rate 1/second } accept
+        icmp type echo-request drop
+        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @ssh-bots-list-ipv4 counter drop
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 limit rate 5/minute counter log prefix "nft-input-drop-ssh-global-limit-ipv4 : " level warning
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 counter drop
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 ip saddr != @ssh-bots-list-ipv4 limit rate 5/minute counter log prefix "nft-input-ssh-bot-add-ipv4 : " level warning
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 add @input-limit-ssh-connections-ipv4 { ip saddr } update @ssh-bots-list-ipv4 { ip saddr }
+        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @input-limit-ssh-connections-ipv4 counter drop
         meta nfproto ipv4 tcp dport 22 ct state new accept
-        meta nfproto ipv4 meter input-default-meter-ipv4 { ip saddr limit rate 5/minute burst 5 packets } log prefix "nft-input-default-ipv4 : " level warning
+        meta nfproto ipv4 add @input-limit-log-drop-default-ipv4 { ip saddr limit rate 5/minute } log prefix "nft-input-drop-default-ipv4 : " level warning
         meta nfproto ipv4 counter drop
     }
     chain output {
@@ -95,6 +127,9 @@ table inet firewall {
     }
 }
 ```
+
+- `tcp_ipv4_mss`
+- `tcp_window_scale`
 
 Create `/etc/nftables/conf.d/00-server-static-dual.nft` :
 
