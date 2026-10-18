@@ -147,8 +147,118 @@ table inet firewall {
 }
 ```
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    set input-tcp-invalid-block-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
+    }
+    set input-default-drop-block-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
+    }
+    set input-tcp-22-connection-limit-exceeded-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+    }
+
+
+        ip saddr @input-tcp-invalid-block-list-ipv4 drop
+        ip saddr @input-default-drop-block-list-ipv4 drop
+
+
+
+
+nmap block scan , block scanner 
+
+
+
+table inet firewall {
+    counter input-ssh-block-list-counter-ipv4 {}
+    set input-icmp-connection-limit-exceeded-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 1s
+    }
+    set input-tcp-22-block-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
+    }
+    chain tcp_syn_proxy {
+        type filter hook prerouting priority -300; policy accept;
+        tcp dport 22 tcp flags & (fin|syn|rst|ack) == syn notrack
+    }
+    chain input {
+        type filter hook input priority 0; policy drop;
+        iif lo accept
+        meta nfproto ipv6 drop
+        meta nfproto ipv4 tcp dport 22 ct state untracked ip saddr @input-tcp-22-block-list-ipv4 update @input-tcp-22-block-list-ipv4 { ip saddr } drop
+        meta nfproto ipv4 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv4_mss wscale tcp_window_scale timestamp sack-perm
+        ct state invalid drop
+        ct state established accept
+        icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+        icmp type echo-request add @input-icmp-connection-limit-exceeded-list-ipv4 { ip saddr limit rate 1/second burst 5 } accept
+        icmp type echo-request drop
+        meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 drop
+        meta nfproto ipv4 tcp dport 22 ct state new ip saddr != @input-tcp-22-block-list-ipv4 add @input-tcp-22-block-list-ipv4 { ip saddr ct count over 1 } counter name input-ssh-block-list-counter-ipv4 limit rate 10/second burst 20 log prefix "nft-input-tcp-22-block-list-ipv4 : " level warn drop
+        meta nfproto ipv4 tcp dport 22 ip saddr @input-tcp-22-block-list-ipv4 drop
+        meta nfproto ipv4 tcp dport 22 ct state new accept
+    }
+    chain output {
+        type filter hook output priority 0; policy accept;
+        oifname "lo" accept
+        meta nfproto ipv6 drop
+    }
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 - `tcp_ipv4_mss`
 - `tcp_window_scale`
+- `ssh_global_limit`
 
 Create `/etc/nftables/conf.d/00-server-static-dual.nft` :
 
@@ -322,7 +432,10 @@ systemd-sysctl.service +65ms
 
 
 
+kernel tuning :
 
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
+net.netfilter.nf_conntrack_tcp_timeout_established = 600
 
 
 
@@ -410,87 +523,43 @@ ss --ipv6 --tcp --info state established "sport = :${tcp_port_number}"
 
 
 
-meta nfproto ipv6 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv6_mss wscale tcp_window_scale timestamp sack-perm
-
-ct state invalid drop
-ct state established,related accept
-iif lo accept
-tcp dport 22 ct state new accept
 
 
 
+======= Nginx Global Limit :
 
+nginx max tcp connections by default :
 
+systemctl show --property=DefaultLimitNOFILE ( 1024 by default )
 
+config file defaults :
 
+worker_processes : auto
+worker_connections : 512
+worker_rlimit_nofile : unset
 
+auto means ( nproc )
 
+/etc/systemd/system/nginx.service.d/override.conf :
 
+LimitNOFILE=65535
 
+nginx static hosting max connections :
 
+min( worker_processes * ( min( worker_connections , worker_rlimit_nofile ) ) , LimitNOFILE )
 
+nginx reverse proxy max connections :
 
+min( worker_processes * ( min( worker_connections , worker_rlimit_nofile ) ) , LimitNOFILE ) / 2
 
+--------------------------------------------------------------------------------------------------
 
+====== Nginx Per source limit :
 
+each user creates 2 tcp connections simultaneously ( xyz.com , api.xyz.com ) for each website
+8 user , 16 concurrent tcp connections
 
-
-
-
-
-
-
-
-
-
-set ssh_conn_v4 {
-    type ipv4_addr
-    flags dynamic
-    size 65535
-}
-
-tcp dport 22 ct state new add @ssh_conn_v4 { ip saddr ct count over 1 } drop
-tcp dport 22 ct state new add @ssh_conn_v6 { ip6 saddr and ffff:ffff:ffff:ffff:: ct count over 1 } drop
-
-
-
-
-
-syn proxy for 22 , 80 , 443
-
-table ip syn_proxy {
-    chain prerouting {
-        type filter hook prerouting priority -300; policy accept;
-        tcp dport 22 tcp flags syn notrack
-    }
-    chain input {
-        type filter hook input priority 0; policy accept;
-        tcp dport 22 ct state invalid,untracked synproxy mss 1460 wscale 7 timestamp sack-perm
-        ct state invalid drop
-    }
-}
-
-
-use ( ct count ) with per source limiting new connections
-limit number of simultaneous tcp connenctions from each source ip to port 22 , 80 , 443 tcp
-1 simultaneous tcp connection to ssh
-8 simultaneous connections to same http Host header for http
-8 simultaneous connections to same sni for https
-
-also define per source limit for icmp and icmpv6
-
-tcp flags '& (fin|syn|rst|psh|ack|urg) == fin|psh|urg' drop
-
-
-
-tcp flags & (fin|syn) == (fin|syn) drop
-tcp flags & (syn|rst) == (syn|rst) drop
-tcp flags & (fin|rst) == (fin|rst) drop
-tcp flags & (fin|syn|rst|ack) == 0 drop
-
-
-
-
+--------------------------------------------------------------------------------------------
 
 tcp connection logging : log flags tcp options
 tcp flooding , icmp flooding , http flooding

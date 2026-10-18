@@ -22,7 +22,7 @@ Ciphers aes128-gcm@openssh.com
 HostKeyAlgorithms ssh-ed25519
 KexAlgorithms curve25519-sha256
 MACs hmac-sha2-256-etm@openssh.com
-LoginGraceTime 20
+LoginGraceTime 30
 MaxAuthTries 3
 MaxSessions 1
 MaxStartups 128:100:128
