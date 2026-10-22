@@ -43,187 +43,87 @@ include "/etc/nftables/conf.d/*.nft"
 
 
 
-sets without timeout are sticky ( persists until every connection drops to zero for the ip )
-
-
-
 Create `/etc/nftables/conf.d/00-server-static-ipv4.nft` :
 
 ```text
-table inet firewall {
-    set input-icmp-connection-limit-exceeded-list-ipv4 {
+
+table netdev ingress_guard {
+    set per_ip_bandwidth {
         type ipv4_addr
         flags dynamic
-        size 65536
-        timeout 1s
-    }
-    set input-tcp-invalid-block-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
         timeout 10m
-    }
-    set input-default-drop-block-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
-        timeout 10m
-    }
-    set input-tcp-22-connection-limit-exceeded-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
         size 65536
     }
-    set input-tcp-22-block-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
-        timeout 10m
-    }
-    chain tcp_syn_proxy {
-        type filter hook prerouting priority -300; policy accept;
-        tcp dport 22 tcp flags & (fin|syn|rst|ack) == syn notrack
-    }
-
-
-
-
-
-        ip saddr @input-tcp-invalid-block-list-ipv4 update @input-tcp-invalid-block-list-ipv4 { ip saddr }
-        ct state invalid meta nfproto ipv4 update @input-tcp-invalid-block-list-ipv4 { ip saddr }
-
-
-
-
-
-
-    chain input {
-        type filter hook input priority 0; policy drop;
-        iif lo accept
-        meta nfproto ipv6 drop
-
-
-        ip saddr @input-tcp-invalid-block-list-ipv4 counter drop
-        ip saddr @input-default-drop-block-list-ipv4 counter drop
-        
-        meta nfproto ipv4 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv4_mss wscale tcp_window_scale timestamp sack-perm
-
-        ct state invalid meta nfproto ipv4 ip saddr != @input-tcp-invalid-block-list-ipv4 limit rate 5/minute counter log prefix "nft-input-tcp-invalid-block-list-ipv4 : " level warning
-        ct state invalid meta nfproto ipv4 counter drop
-
-
-        ct state established accept
-
-        icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
-        icmp type echo-request add @input-icmp-connection-limit-exceeded-list-ipv4 { ip saddr limit rate 1/second } accept
-        icmp type echo-request drop
-
-        ct state established meta nfproto ipv4 tcp dport 22 ip saddr != @input-tcp-invalid-block-list-ipv4 update @input-tcp-invalid-block-list-ipv4 { ip saddr }
-        
-        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @input-tcp-22-block-list-ipv4 counter drop
-        meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 limit rate 5/minute counter log prefix "nft-input-tcp-22-connection-limit-exceeded-list-ipv4 : " level warning
-        meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 counter drop
-        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 ip saddr != @input-tcp-22-block-list-ipv4 limit rate 5/minute counter log prefix "nft-input-tcp-22-block-list-ipv4 : " level warning
-        meta nfproto ipv4 tcp dport 22 ct state new ct count over 1 add @input-tcp-22-connection-limit-exceeded-list-ipv4 { ip saddr } update @input-tcp-22-block-list-ipv4 { ip saddr }
-        meta nfproto ipv4 tcp dport 22 ct state new ip saddr @input-tcp-22-connection-limit-exceeded-list-ipv4 counter drop
-        meta nfproto ipv4 tcp dport 22 ct state new accept
-
-
-        ct state established meta nfproto ipv4 tcp dport 22 ip saddr != @input-default-drop-block-list-ipv4 update @input-default-drop-block-list-ipv4 { ip saddr }
-
-        ip saddr @input-default-drop-block-list-ipv4 update @input-default-drop-block-list-ipv4 { ip saddr }
-        meta nfproto ipv4 ct state new ip saddr != @input-default-drop-block-list-ipv4 limit rate 5/minute counter log prefix "nft-input-default-drop-block-list-ipv4 : " level warning
-        meta nfproto ipv4 ct state new update @input-default-drop-block-list-ipv4 { ip saddr }
-        meta nfproto ipv4 ct state new counter drop
-    }
-    chain output {
-        type filter hook output priority 0; policy accept;
-        oifname "lo" accept
-        meta nfproto ipv6 drop
-    }
-    chain forward {
-        type filter hook forward priority 0; policy drop;
+    chain ingress_filter {
+        type filter hook ingress device eth0 priority -500; policy accept;
+        ip frag-off & 0x1fff != 0 counter drop
+        ip saddr @per_ip_bandwidth update @per_ip_bandwidth { ip saddr limit rate over 100mbit/s burst 100kbytes } counter drop
     }
 }
-```
 
 
+suggest a reasonable concurrent tcp limit for public resolvers based on their documnetation ( google , cloudflare , ... ) following the ssh pattern .
+also implement a global limit for concurrent tcp connections to port 53 tcp . also how do i create a requests per second limit for port 53 udp .
+drop fragments at ingress , also think about dnssec fragmentation of udp
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-    set input-tcp-invalid-block-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
-        timeout 10m
-    }
-    set input-default-drop-block-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
-        timeout 10m
-    }
-    set input-tcp-22-connection-limit-exceeded-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
-    }
-
-
-        ip saddr @input-tcp-invalid-block-list-ipv4 drop
-        ip saddr @input-default-drop-block-list-ipv4 drop
-
-
-
-
-nmap block scan , block scanner 
 
 
 
 table inet firewall {
     counter input-ssh-block-list-counter-ipv4 {}
-    set input-icmp-connection-limit-exceeded-list-ipv4 {
-        type ipv4_addr
-        flags dynamic
-        size 65536
-        timeout 1s
-    }
-    set input-tcp-22-block-list-ipv4 {
+    counter input-dns-block-list-counter-ipv4 {} 
+    counter input-dns-proxy-list-counter-ipv4 {}
+    set input-ssh-block-list-ipv4 {
         type ipv4_addr
         flags dynamic
         size 65536
         timeout 10m
     }
-    chain tcp_syn_proxy {
+    set input-dns-block-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
+    }
+    set dns-servers-list-ipv4 {
+        type ipv4_addr
+        flags dynamic
+        size 65536
+        timeout 10m
+    }
+    chain tcp_proxy {
         type filter hook prerouting priority -300; policy accept;
-        tcp dport 22 tcp flags & (fin|syn|rst|ack) == syn notrack
+        meta nfproto ipv4 tcp dport 22 tcp flags & ( fin | syn | rst | ack ) == syn notrack
+        meta nfproto ipv4 tcp dport 53 tcp flags & ( fin | syn | rst | ack ) == syn notrack
+    }
+    chain udp_proxy {
+        type nat hook prerouting priority -100; policy accept;
+        meta nfproto ipv4 udp dport 53 ip saddr != @dns-servers-list-ipv4 counter name input-dns-proxy-list-counter-ipv4 redirect to :5353
     }
     chain input {
         type filter hook input priority 0; policy drop;
         iif lo accept
         meta nfproto ipv6 drop
-        meta nfproto ipv4 tcp dport 22 ct state untracked ip saddr @input-tcp-22-block-list-ipv4 update @input-tcp-22-block-list-ipv4 { ip saddr } drop
+        meta nfproto ipv4 tcp dport 22 ct state untracked ip saddr @input-ssh-block-list-ipv4 update @input-ssh-block-list-ipv4 { ip saddr } drop
+        meta nfproto ipv4 tcp dport 53 ct state untracked ip saddr @input-dns-block-list-ipv4 drop
         meta nfproto ipv4 tcp dport 22 ct state invalid,untracked synproxy mss tcp_ipv4_mss wscale tcp_window_scale timestamp sack-perm
+        meta nfproto ipv4 tcp dport 53 ct state invalid,untracked synproxy mss tcp_ipv4_mss wscale tcp_window_scale timestamp sack-perm
         ct state invalid drop
+        meta nfproto ipv4 tcp dport 53 ct state established add @dns-servers-list-ipv4 { ip saddr }
         ct state established accept
         icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
-        icmp type echo-request add @input-icmp-connection-limit-exceeded-list-ipv4 { ip saddr limit rate 1/second burst 5 } accept
+        icmp type echo-request limit rate 5/second burst 10 packets accept
         icmp type echo-request drop
         meta nfproto ipv4 tcp dport 22 ct state new ct count over 128 drop
-        meta nfproto ipv4 tcp dport 22 ct state new ip saddr != @input-tcp-22-block-list-ipv4 add @input-tcp-22-block-list-ipv4 { ip saddr ct count over 1 } counter name input-ssh-block-list-counter-ipv4 limit rate 10/second burst 20 log prefix "nft-input-tcp-22-block-list-ipv4 : " level warn drop
-        meta nfproto ipv4 tcp dport 22 ip saddr @input-tcp-22-block-list-ipv4 drop
+        meta nfproto ipv4 tcp dport 22 ct state new ip saddr != @input-ssh-block-list-ipv4 add @input-ssh-block-list-ipv4 { ip saddr ct count over 2 } counter name input-ssh-block-list-counter-ipv4 limit rate 10/second burst 20 log prefix "nft-input-ssh-block-list-ipv4 : " level warn drop
+        meta nfproto ipv4 tcp dport 22 ip saddr @input-ssh-block-list-ipv4 drop
         meta nfproto ipv4 tcp dport 22 ct state new accept
+        meta nfproto ipv4 tcp dport 53 ct state new ip saddr != @input-dns-block-list-ipv4 add @input-dns-block-list-ipv4 { ip saddr ct count over 2 } counter name input-dns-block-list-counter-ipv4 limit rate 10/second burst 20 log prefix "nft-input-dns-block-list-ipv4 : " level warn drop
+        meta nfproto ipv4 tcp dport 53 ip saddr @input-dns-block-list-ipv4 drop
+        meta nfproto ipv4 tcp dport 53 ct state new accept
+        meta nfproto ipv4 udp dport 53 accept
+        meta nfproto ipv4 udp dport 5353 ct status dnat accept
     }
     chain output {
         type filter hook output priority 0; policy accept;
@@ -243,18 +143,16 @@ table inet firewall {
 
 
 
+forward chain :
 
+meta nfproto ipv4 tcp flags syn tcp option maxseg size set tcp_ipv4_mss
 
-
-
-
-
-
-
-
-
-
-
+table netdev early_filter {
+    chain wan_ingress {
+        type filter hook ingress device "eth0" priority filter; policy accept;
+        ip frag-off & 0x3fff != 0 drop
+    }
+}
 
 - `tcp_ipv4_mss`
 - `tcp_window_scale`
@@ -467,20 +365,18 @@ Create `/root/syn-proxy.sh` :
 ```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
-interface_name=$1
 display_values() {
     printf '%s\n' "TCP over IPv4 MSS : $tcp_over_ipv4_mss" "TCP over IPv6 MSS : $tcp_over_ipv6_mss" "TCP Window Scale : $tcp_window_scale"
     exit 0
 }
-interface_mtu_path="/sys/class/net/${interface_name}/mtu"
-interface_mtu=$( < "$interface_mtu_path" )
+min_path_mtu=1400
 ipv4_headers=20
 ipv6_headers=40
 tcp_headers=20
 tcp_over_ipv4_headers=$((ipv4_headers + tcp_headers))
 tcp_over_ipv6_headers=$((ipv6_headers + tcp_headers))
-tcp_over_ipv4_mss=$((interface_mtu - tcp_over_ipv4_headers))
-tcp_over_ipv6_mss=$((interface_mtu - tcp_over_ipv6_headers))
+tcp_over_ipv4_mss=$((min_path_mtu - tcp_over_ipv4_headers))
+tcp_over_ipv6_mss=$((min_path_mtu - tcp_over_ipv6_headers))
 tcp_window_scaling_enabled=$(sysctl --values net.ipv4.tcp_window_scaling)
 tcp_window_scale=0
 (( tcp_window_scaling_enabled )) || display_values
@@ -503,7 +399,7 @@ display_values
 ```
 
 ```bash
-bash /root/syn-proxy.sh eth0
+bash /root/syn-proxy.sh
 ```
 
 ```bash

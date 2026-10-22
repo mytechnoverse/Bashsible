@@ -26,7 +26,6 @@ rm -rf /etc/chrony/conf.d/*
 
 ---
 
-use debian default chrony.conf +
 
 Overwrite `/etc/chrony/chrony.conf` :
 
