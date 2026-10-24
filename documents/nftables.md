@@ -135,10 +135,18 @@ table inet firewall {
     }
 }
 
+google :
 
+https://developers.google.com/speed/public-dns/faq
 
+https://www.gstatic.com/ipranges/publicdns.json
 
+curl https://www.gstatic.com/ipranges/publicdns.json | jq '.prefixes[]  | .ipv4Prefix
 
+cloudflare :
+
+https://www.cloudflare.com/ips-v4/#
+https://www.cloudflare.com/ips-v6/#
 
 
 
@@ -330,7 +338,7 @@ systemd-sysctl.service +65ms
 
 
 
-kernel tuning :
+kernel tuning : ( always start at 60 )
 
 net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
 net.netfilter.nf_conntrack_tcp_timeout_established = 600
@@ -349,7 +357,7 @@ Create `/etc/modules-load.d/nftables-connection-tracking.conf` :
 nf_conntrack
 ```
 
-Create `/etc/sysctl.d/10-syn-proxy-ipv4.conf` :
+Create `/etc/sysctl.d/60-syn-proxy-ipv4.conf` :
 
 ```ini
 net.netfilter.nf_conntrack_tcp_loose = 0
