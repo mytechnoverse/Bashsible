@@ -28,6 +28,10 @@ dpkg-query --show --showformat='${Status}\n' procps
 apt install procps
 dpkg-query --show --showformat='${Status}\n' iproute2
 apt install iproute2
+dpkg-query --show --showformat='${Status}\n' iprange
+apt install iprange
+dpkg-query --show --showformat='${Status}\n' jc
+apt install jc
 mkdir -p /etc/nftables/conf.d/
 ```
 
@@ -139,9 +143,133 @@ google :
 
 https://developers.google.com/speed/public-dns/faq
 
-https://www.gstatic.com/ipranges/publicdns.json
+- <https://www.gstatic.com/ipranges/publicdns.json>
 
-curl https://www.gstatic.com/ipranges/publicdns.json | jq '.prefixes[]  | .ipv4Prefix
+
+
+Create `create_nft_set.sh` : 
+
+```bash
+#!/usr/bin/bash
+set -Eeuo pipefail
+create_set() {
+    local nft_table_name=$1
+    local nft_set_name=$2
+    local nft_set_type=$3
+    local -n ip_ranges_list_ref=$4
+    local ip_ranges_count="${#ip_ranges_list_ref[@]}"
+    (( ip_ranges_count ))
+    readarray -t ip_ranges_list_optimized < <(printf '%s\n' "${ip_ranges_list_ref[@]}" | iprange --optimize)
+    printf 'add set inet %s %s \'{ type %s; flags interval; }\'' $nft_table_name $nft_set_name $nft_set_type
+    printf 'add element inet %s %s {\n' $nft_table_name $nft_set_name
+    printf '}\n'
+}
+command -v jq >/dev/null
+command -v jc >/dev/null
+command -v iprange >/dev/null 
+(( $# == 3 ))
+nft_table_name=$1
+nft_set_name=$2
+ip_ranges_list_file_path=$3
+[[ -f $ip_ranges_list_file_path ]]
+ip_ranges_list_file=$(< $ip_ranges_list_file_path)
+readarray -t ip_ranges_list < <(printf '%s\n' "$ip_ranges_list_file")
+ip_ranges_count="${#ip_ranges_list[@]}"
+(( ip_ranges_count ))
+declare -a ip_ranges_list_ipv4
+declare -a ip_ranges_list_ipv6
+for (( ip_range_index = 0; ip_range_index < ip_ranges_count; ip_range_index++ ))
+do
+    ip_range=ip_ranges_list[$ip_range_index]
+    [[ -n $ip_range ]] || continue
+    ip_range_info=$(printf '%s' $ip_range | jc --ip-address)
+    ip_range_version=$(printf '%s' "$ip_range_info" | jq --raw-output '.version')
+    if (( ip_range_version == 4 ))
+    then
+        ip_ranges_list_ipv4+=($ip_range)
+    else
+        ip_ranges_list_ipv6+=($ip_range)
+    fi
+done
+
+
+
+
+
+
+create_set $nft_table_name $nft_set_name ipv4_addr ip_ranges_ipv4
+create_set $nft_table_name $nft_set_name ipv6_addr ip_ranges_ipv6
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+```bash
+create_nft_set.sh table_name dns_servers_set dns_servers.txt
+```
+
+
+
+
+
+
+
+#!/usr/bin/bash
+set -Eeuo pipefail
+create_set() {
+    local table_name=$1
+    local set_name=$2
+    local ip_version=$3
+    local -n ip_ranges_list_ref=$4
+    set_name_ipv4="${set_name}_ipv4"
+set_name_ipv6="${set_name}_ipv6"
+    printf 'add set inet %s %s \'{ type ipv4_addr; flags interval; }\'' $table_name $set_name
+    (( ${#ip_ranges_list_ref[@]} )) || return 0
+    printf 'add element inet %s %s {\n' $table_name $set_name
+    local ip_range_index_last=$(( ${#ip_ranges_list_ref[@]} - 1 ))
+    for (( ip_range_index = 0; ip_range_index <= ip_range_index_last; ip_range_index++ ))
+    do
+        if (( ip_range_index < ip_range_index_last ))
+        then
+            printf '%s,\n' "    ${ip_ranges_list_ref[$ip_range_index]}"
+        else
+            printf '%s\n' "    ${ip_ranges_list_ref[$ip_range_index]}"
+        fi
+    done
+    printf '}\n'
+}
+table_name=$1
+set_name=$2
+json_path=$3
+script_path=$4
+
+[[ -e $json_path ]] || exit 1
+script_path_ipv4="${script_path}_ipv4"
+script_path_ipv6="${script_path}_ipv6"
+json_file=$(< $json_path)
+ip_ranges_ipv4=$(printf '%s\n' "$json_file" | jq --raw-output '.prefixes[] | select(.ipv4Prefix != null) | .ipv4Prefix')
+ip_ranges_ipv6=$(printf '%s\n' "$json_file" | jq --raw-output '.prefixes[] | select(.ipv6Prefix != null) | .ipv6Prefix')
+readarray -t ip_ranges_list_ipv4 < <(iprange --optimize <<< "$ip_ranges_ipv4")
+readarray -t ip_ranges_list_ipv6 < <(iprange --optimize <<< "$ip_ranges_ipv6")
+nft_script_ipv4=$(create_set $table_name $set_name ipv4 ip_ranges_list_ipv4)
+nft_script_ipv6=$(create_set $table_name $set_name ipv6 ip_ranges_list_ipv6)
+printf '%s\n' "$nft_script_ipv4" > $script_path
+printf '%s\n' "$nft_script_ipv6" > $script_path
+
+
+
+google_dns_servers_ipv4 google-ipv4.nft
+
 
 cloudflare :
 
