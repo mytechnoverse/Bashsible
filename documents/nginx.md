@@ -2,7 +2,8 @@
 # Nginx :
 
 
-
+dpkg-query --show --showformat='${Status}\n' dpkg-dev
+apt install --no-install-recommends dpkg-dev
 
 --with-stream_ssl_preread_module
 

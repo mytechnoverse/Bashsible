@@ -1,6 +1,12 @@
 
 # Nftables :
 
+
+- <https://github.com/firehol/iprange/releases>
+- <https://github.com/firehol/iprange/releases/download/v2.1.1/iprange-2.1.1.tar.xz>
+
+
+
 https://wiki.nftables.org/wiki-nftables/index.php/GeoIP_matching
 https://wiki.nftables.org/wiki-nftables/index.php/Synproxy
 https://wiki.nftables.org/wiki-nftables/index.php/Simple_ruleset_for_a_home_router
@@ -28,12 +34,62 @@ dpkg-query --show --showformat='${Status}\n' procps
 apt install procps
 dpkg-query --show --showformat='${Status}\n' iproute2
 apt install iproute2
-dpkg-query --show --showformat='${Status}\n' iprange
-apt install iprange
 dpkg-query --show --showformat='${Status}\n' jc
 apt install jc
 mkdir -p /etc/nftables/conf.d/
 ```
+
+apt install build-essential
+./configure --disable-man 
+make -j"$(nproc)"
+
+
+cp /iprange-2.1.1/src/iprange /usr/local/bin/
+
+
+iprange --version
+iprange --has-ipv6
+
+iprange --print-prefix '    ' --ipv4 google-ipv4.txt cloudflare-ipv4.txt > dns-servers.ipv4
+iprange --print-prefix '    ' --ipv6 google-ipv6.txt cloudflare-ipv6.txt > dns-servers-ipv6
+
+
+
+
+Create `check-iprange-ipv6-support.sh` : 
+
+```bash
+#!/usr/bin/bash
+set -Eeuo pipefail
+package_name='iprange'
+package_required_version='2.1.1'
+apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update
+apt-cache show $package_name &>/dev/null
+package_candidate_version=''
+while read -r line_key line_value
+do
+    [[ $line_key == 'Candidate:' ]] && {
+        package_candidate_version=$line_value
+        break
+    }
+done < <(apt-cache policy $package_name)
+[[ $package_candidate_version != '(none)' ]]
+dpkg --compare-versions $package_candidate_version ge $package_required_version
+```
+
+```bash
+bash check-iprange-ipv6-support.sh || printf '%s\n' "IPRanges IPv6 Support NOT Provided By APT Repository !"
+dpkg-query --show --showformat='${Status}\n' iprange
+apt install iprange
+apt purge iprange
+apt autoremove --purge
+```
+
+
+
+
+
+
 
 Overwrite `/etc/nftables.conf` :
 
@@ -147,6 +203,12 @@ https://developers.google.com/speed/public-dns/faq
 
 
 
+curl https://www.gstatic.com/ipranges/publicdns.json | jq 
+
+
+
+
+
 Create `create_nft_set.sh` : 
 
 ```bash
@@ -157,11 +219,21 @@ create_set() {
     local nft_set_name=$2
     local nft_set_type=$3
     local -n ip_ranges_list_ref=$4
-    local ip_ranges_count="${#ip_ranges_list_ref[@]}"
-    (( ip_ranges_count ))
-    readarray -t ip_ranges_list_optimized < <(printf '%s\n' "${ip_ranges_list_ref[@]}" | iprange --optimize)
-    printf 'add set inet %s %s \'{ type %s; flags interval; }\'' $nft_table_name $nft_set_name $nft_set_type
+    local -a ip_ranges_list
+    readarray -t ip_ranges_list < <(printf '%s\n' "${ip_ranges_list_ref[@]}" | iprange --optimize)
+    printf 'add set inet %s %s { type %s; flags interval; }\n' $nft_table_name $nft_set_name $nft_set_type
+    printf 'flush set inet %s %s\n' $nft_table_name $nft_set_name
     printf 'add element inet %s %s {\n' $nft_table_name $nft_set_name
+    local ip_range_index_last=$(( ${#ip_ranges_list_ref[@]} - 1 ))
+    for (( ip_range_index = 0; ip_range_index <= ip_range_index_last; ip_range_index++ ))
+    do
+        if (( ip_range_index < ip_range_index_last ))
+        then
+            printf '%s,\n' "    ${ip_ranges_list[$ip_range_index]}"
+        else
+            printf '%s\n' "    ${ip_ranges_list[$ip_range_index]}"
+        fi
+    done
     printf '}\n'
 }
 command -v jq >/dev/null
@@ -171,6 +243,8 @@ command -v iprange >/dev/null
 nft_table_name=$1
 nft_set_name=$2
 ip_ranges_list_file_path=$3
+nft_set_name_ipv4="${nft_set_name}_ipv4"
+nft_set_name_ipv6="${nft_set_name}_ipv6"
 [[ -f $ip_ranges_list_file_path ]]
 ip_ranges_list_file=$(< $ip_ranges_list_file_path)
 readarray -t ip_ranges_list < <(printf '%s\n' "$ip_ranges_list_file")
@@ -180,9 +254,11 @@ declare -a ip_ranges_list_ipv4
 declare -a ip_ranges_list_ipv6
 for (( ip_range_index = 0; ip_range_index < ip_ranges_count; ip_range_index++ ))
 do
-    ip_range=ip_ranges_list[$ip_range_index]
-    [[ -n $ip_range ]] || continue
+    ip_range=${ip_ranges_list[$ip_range_index]}
     ip_range_info=$(printf '%s' $ip_range | jc --ip-address)
+    ip_address=$(printf '%s' "$ip_range_info" | jq --raw-output '.ip')
+    ip_network=$(printf '%s' "$ip_range_info" | jq --raw-output '.network')
+    [[ $ip_address == $ip_network ]]
     ip_range_version=$(printf '%s' "$ip_range_info" | jq --raw-output '.version')
     if (( ip_range_version == 4 ))
     then
@@ -191,27 +267,19 @@ do
         ip_ranges_list_ipv6+=($ip_range)
     fi
 done
-
-
-
-
-
-
-create_set $nft_table_name $nft_set_name ipv4_addr ip_ranges_ipv4
-create_set $nft_table_name $nft_set_name ipv6_addr ip_ranges_ipv6
-
-
-
-
-
-
-
-
-
-
-
-
+(( ${#ip_ranges_list_ipv4[@]} )) || {
+    nft_set_ipv4=$(create_set $nft_table_name $nft_set_name_ipv4 ipv4_addr ip_ranges_list_ipv4)
+    printf '%s\n' "$nft_set_ipv4" > "${nft_set_name_ipv4}.nft"
+}
+(( ${#ip_ranges_list_ipv6[@]} )) || {
+    nft_set_ipv6=$(create_set $nft_table_name $nft_set_name_ipv6 ipv6_addr ip_ranges_list_ipv6)
+    printf '%s\n' "$nft_set_ipv6" > "${nft_set_name_ipv6}.nft"
+}
 ```
+
+
+
+sort from lower cidr to higher
 
 
 ```bash
@@ -219,7 +287,7 @@ create_nft_set.sh table_name dns_servers_set dns_servers.txt
 ```
 
 
-
+jq '.prefixes[]  | .ipv4Prefix // .ipv6Prefix'
 
 
 
@@ -237,15 +305,7 @@ set_name_ipv6="${set_name}_ipv6"
     (( ${#ip_ranges_list_ref[@]} )) || return 0
     printf 'add element inet %s %s {\n' $table_name $set_name
     local ip_range_index_last=$(( ${#ip_ranges_list_ref[@]} - 1 ))
-    for (( ip_range_index = 0; ip_range_index <= ip_range_index_last; ip_range_index++ ))
-    do
-        if (( ip_range_index < ip_range_index_last ))
-        then
-            printf '%s,\n' "    ${ip_ranges_list_ref[$ip_range_index]}"
-        else
-            printf '%s\n' "    ${ip_ranges_list_ref[$ip_range_index]}"
-        fi
-    done
+
     printf '}\n'
 }
 table_name=$1
@@ -253,18 +313,10 @@ set_name=$2
 json_path=$3
 script_path=$4
 
-[[ -e $json_path ]] || exit 1
-script_path_ipv4="${script_path}_ipv4"
-script_path_ipv6="${script_path}_ipv6"
 json_file=$(< $json_path)
 ip_ranges_ipv4=$(printf '%s\n' "$json_file" | jq --raw-output '.prefixes[] | select(.ipv4Prefix != null) | .ipv4Prefix')
 ip_ranges_ipv6=$(printf '%s\n' "$json_file" | jq --raw-output '.prefixes[] | select(.ipv6Prefix != null) | .ipv6Prefix')
-readarray -t ip_ranges_list_ipv4 < <(iprange --optimize <<< "$ip_ranges_ipv4")
-readarray -t ip_ranges_list_ipv6 < <(iprange --optimize <<< "$ip_ranges_ipv6")
-nft_script_ipv4=$(create_set $table_name $set_name ipv4 ip_ranges_list_ipv4)
-nft_script_ipv6=$(create_set $table_name $set_name ipv6 ip_ranges_list_ipv6)
-printf '%s\n' "$nft_script_ipv4" > $script_path
-printf '%s\n' "$nft_script_ipv6" > $script_path
+
 
 
 
