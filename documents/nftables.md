@@ -39,31 +39,75 @@ apt install jc
 mkdir -p /etc/nftables/conf.d/
 ```
 
+
+
+
+
+apt update
 apt install build-essential
-./configure --disable-man 
-make -j"$(nproc)"
+
+Create `build-auto-tools.sh` :
+
+```bash
+#!/usr/bin/bash
+set -Eeuo pipefail
+shopt -s inherit_errexit
+script_error_trap() {
+    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
+    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
+}
+trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
+script_path=$(pwd)
+(( $# >= 3 ))
+binary_name=$1
+source_path=$2
+binary_subdir=$3
+configure_options=("${@:4}")
+[[ -f $source_path ]]
+[[ ! -f "${script_path}/${binary_name}" ]]
+temp_path="$(mktemp --directory)/"
+tar --extract --strip-components=1 --directory $temp_path --file $source_path
+( cd $temp_path && ./configure "${configure_options[@]}" )
+cpu_core_count=$(nproc)
+make --jobs $cpu_core_count --directory $temp_path
+build_path="${temp_path}${binary_subdir}/${binary_name}"
+strip --strip-unneeded $build_path
+cp $build_path $script_path
+rm --force --recursive $temp_path
+```
+
+```bash
+build-auto-tools.sh iprange iprange.tar.xz src --disable-man
+install --mode 0755 --owner root --group root -- ./iprange /usr/local/bin/iprange
+command -v iprange >/dev/null
+```
 
 
-cp /iprange-2.1.1/src/iprange /usr/local/bin/
+
+
 
 
 iprange --version
 iprange --has-ipv6
 
-iprange --print-prefix '    ' --ipv4 google-ipv4.txt cloudflare-ipv4.txt > dns-servers.ipv4
-iprange --print-prefix '    ' --ipv6 google-ipv6.txt cloudflare-ipv6.txt > dns-servers-ipv6
+iprange --ipv4 google-ipv4.txt cloudflare-ipv4.txt > dns-servers.ipv4
+iprange --ipv6 google-ipv6.txt cloudflare-ipv6.txt > dns-servers-ipv6
 
 
 
+
+
+
+apt update
 
 Create `check-iprange-ipv6-support.sh` : 
 
 ```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 package_name='iprange'
 package_required_version='2.1.1'
-apt-get --quiet=2 -o Acquire::Retries=0 --error-on=any update
 apt-cache show $package_name &>/dev/null
 package_candidate_version=''
 while read -r line_key line_value
@@ -214,6 +258,7 @@ Create `create_nft_set.sh` :
 ```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 create_set() {
     local nft_table_name=$1
     local nft_set_name=$2
@@ -294,6 +339,7 @@ jq '.prefixes[]  | .ipv4Prefix // .ipv6Prefix'
 
 #!/usr/bin/bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 create_set() {
     local table_name=$1
     local set_name=$2
@@ -553,6 +599,7 @@ Create `/root/syn-proxy.sh` :
 ```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 display_values() {
     printf '%s\n' "TCP over IPv4 MSS : $tcp_over_ipv4_mss" "TCP over IPv6 MSS : $tcp_over_ipv6_mss" "TCP Window Scale : $tcp_window_scale"
     exit 0

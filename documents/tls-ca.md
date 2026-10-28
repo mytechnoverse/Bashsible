@@ -14,6 +14,7 @@ Create `/root/create-tls-ca.sh` :
 ```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 ca_name=$1
 ca_tld=$2
 ca_tls_path="/etc/tls/${ca_name}/"
@@ -32,6 +33,7 @@ Create `/root/create-tls-cert.sh` :
 ```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 ca_name=$1
 server_name=$2
 ca_tls_path="/etc/tls/${ca_name}/"
