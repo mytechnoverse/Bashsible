@@ -10,7 +10,7 @@ apt install systemd-resolved
 systemctl status systemd-resolved
 systemctl start systemd-resolved
 systemctl status systemd-resolved
-systemctl enable systemd-resolved
+systemctl --quiet is-enabled systemd-resolved || systemctl enable systemd-resolved
 test -L /etc/resolv.conf && readlink /etc/resolv.conf
 ln --symbolic --force /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 resolvectl status

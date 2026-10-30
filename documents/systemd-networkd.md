@@ -165,7 +165,7 @@ Domains=internal_domain
 systemctl status systemd-networkd
 systemctl start systemd-networkd
 systemctl status systemd-networkd
-systemctl enable systemd-networkd
+systemctl --quiet is-enabled systemd-networkd || systemctl enable systemd-networkd
 networkctl list
 networkctl status
 networkctl status eth0

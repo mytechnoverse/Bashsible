@@ -36,4 +36,6 @@ Match Group *,!ssh_users
 sed -i '/pam_motd\.so/ { /^#/! s/^/#/ }' /etc/pam.d/sshd
 sshd -t
 systemctl restart ssh
+systemctl status ssh
+systemctl --quiet is-enabled ssh || systemctl enable ssh
 ```

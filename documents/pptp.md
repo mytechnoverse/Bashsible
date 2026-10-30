@@ -62,7 +62,7 @@ systemctl daemon-reload
 systemctl status pptp-vpn
 systemctl start pptp-vpn
 systemctl status pptp-vpn
-systemctl enable pptp-vpn
+systemctl --quiet is-enabled pptp-vpn || systemctl enable pptp-vpn
 ```
 
 meta nfproto ipv4 ip saddr pptp_server_ip ip protocol gre accept

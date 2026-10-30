@@ -42,8 +42,10 @@ systemctl start dnscrypt-proxy
 systemctl status dnscrypt-proxy
 systemctl restart dnscrypt-proxy
 systemctl status dnscrypt-proxy
-systemctl enable dnscrypt-proxy
+systemctl --quiet is-enabled dnscrypt-proxy || systemctl enable dnscrypt-proxy
 ss -lntup
 dig @127.0.0.1 -p dnscrypt_port whoami.cloudflare ch txt +short
 ```
+
+
 

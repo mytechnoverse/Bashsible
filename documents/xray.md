@@ -13,9 +13,8 @@ apt install unzip
 ```
 
 ```bash
-mkdir -p /root/downloads/
-unzip /root/downloads/xray.zip xray -d /root/downloads/
-cp /root/downloads/xray /usr/bin/xray
+unzip -j xray.zip xray
+cp xray /usr/bin/xray
 ```
 
 ```bash
@@ -712,8 +711,8 @@ Edit `/etc/xray/conf.d/30-outbound-client-xhttp-stream-up.json` :
 xray run --confdir /etc/xray/conf.d/ --test
 systemctl status xray 
 systemctl start xray
-systemctl status xray 
-systemctl enable xray
+systemctl status xray
+systemctl --quiet is-enabled xray || systemctl enable xray
 ss -lntup
 tar -c -f /root/xray-client.tar -C /root/xray-client/ xray-id.txt -C /root/tls/internal-ca/ internal-ca.crt
 ```
@@ -854,7 +853,7 @@ xray run --confdir /etc/xray/conf.d/ --test
 systemctl status xray 
 systemctl start xray
 systemctl status xray 
-systemctl enable xray
+systemctl --quiet is-enabled xray || systemctl enable xray
 ss -lntup
 curl -v -x http://user2:222@127.0.0.1:8080 https://api.ipify.org
 ```

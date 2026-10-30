@@ -88,5 +88,5 @@ UseNTP=yes
 
 
 
-
+systemctl --quiet is-enabled chrony || systemctl enable chrony
 

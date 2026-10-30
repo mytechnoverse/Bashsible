@@ -8,10 +8,12 @@ dpkg-query --show --showformat='${Status}\n' rsyslog
 apt install rsyslog
 ```
 
+```bash
 systemctl status systemd-journald
 systemctl start systemd-journald
 systemctl status systemd-journald
-systemctl enable systemd-journald
+systemctl --quiet is-enabled systemd-journald || systemctl enable systemd-journald
+```
 
 Create `/etc/systemd/journald.conf.d/00-persistent-logs.conf` :
 

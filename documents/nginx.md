@@ -167,7 +167,7 @@ systemctl start nginx
 systemctl status nginx
 systemctl restart nginx
 systemctl status nginx
-systemctl enable nginx
+systemctl --quiet is-enabled nginx || systemctl enable nginx
 ss -lntup
 ```
 

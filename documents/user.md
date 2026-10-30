@@ -14,19 +14,6 @@ apt install whois
 ```bash
 su --login root
 usermod --lock root
-echo $PATH
-```
-
-Create `/etc/sudoers.d/10-local-path` :
-
-```text
-Defaults secure_path += /usr/local/bin/
-```
-
-```bash
-chmod 440 /etc/sudoers.d/10-sudo-path
-visudo --check
-sudo -V
 ```
 
 ---
@@ -38,8 +25,7 @@ Create `/etc/security/limits.d/10-single-session.conf` :
 ```
 
 ```bash
-getent group
-groupadd ssh_users
+getent group ssh_users >/dev/null || groupadd ssh_users
 getent group ssh_users
 ```
 
@@ -50,8 +36,8 @@ echo 'new_username:password_hash' | chpasswd --encrypted
 groups new_username
 usermod --append --groups sudo new_username
 usermod --append --groups ssh_users new_username
-usermod --append --groups systemd-journal new_username
 ```
 
+```bash
 sudo --login
-
+```

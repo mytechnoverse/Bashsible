@@ -510,7 +510,7 @@ nft --check --file /etc/nftables.conf
 systemctl status nftables
 systemctl start nftables
 systemctl status nftables
-systemctl enable nftables
+systemctl --quiet is-enabled nftables || systemctl enable nftables
 nft list ruleset
 watch --color --differences --interval 1 'nft list counters table inet firewall'
 ```
