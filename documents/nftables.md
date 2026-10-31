@@ -42,9 +42,35 @@ mkdir -p /etc/nftables/conf.d/
 
 
 
+iprange --version
+iprange --has-ipv6
+
+iprange --ipv4 google-ipv4.txt cloudflare-ipv4.txt > dns-servers.ipv4
+iprange --ipv6 google-ipv6.txt cloudflare-ipv6.txt > dns-servers-ipv6
+
+
 
 apt update
+
+
+
+
+
+
+
+
+```bash
+bash check-package-availability.sh iprange 2.0.0
+dpkg-query --show --showformat='${Status}\n' iprange
+apt install iprange
+apt purge iprange
+apt autoremove --purge
+```
+
+
+```bash
 apt install build-essential
+```
 
 Create `build-auto-tools.sh` :
 
@@ -81,64 +107,6 @@ build-auto-tools.sh iprange iprange.tar.xz src --disable-man
 install --mode 0755 --owner root --group root -- ./iprange /usr/local/bin/iprange
 command -v iprange
 ```
-
-
-
-
-
-
-iprange --version
-iprange --has-ipv6
-
-iprange --ipv4 google-ipv4.txt cloudflare-ipv4.txt > dns-servers.ipv4
-iprange --ipv6 google-ipv6.txt cloudflare-ipv6.txt > dns-servers-ipv6
-
-
-
-
-
-
-
-
-
-apt update
-
-Create `check-package-availability.sh` : 
-
-```bash
-#!/usr/bin/bash
-set -Eeuo pipefail
-shopt -s inherit_errexit
-
-package_name=$1
-package_required_version=$2
-apt-cache pkgnames | grep --quiet --line-regexp --fixed-strings $package_name
-package_candidate_version=''
-while read -r line_key line_value
-do
-    [[ $line_key == 'Candidate:' ]] && {
-        package_candidate_version=$line_value
-        break
-    }
-done < <(apt-cache policy $package_name)
-[[ $package_candidate_version != '(none)' ]]
-dpkg --compare-versions $package_candidate_version ge $package_required_version
-```
-
-check-package-availability.sh
-
-iprange 2.0.0
-
-
-```bash
-bash check-iprange-ipv6-support.sh || printf '%s\n' "IPRanges IPv6 Support NOT Provided By APT Repository !"
-dpkg-query --show --showformat='${Status}\n' iprange
-apt install iprange
-apt purge iprange
-apt autoremove --purge
-```
-
-
 
 
 

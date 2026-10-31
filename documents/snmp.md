@@ -65,7 +65,7 @@ trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
 snmp_auth_algorithm='SHA-256'
 snmp_enc_algorithm='AES-128'
 snmp_min_password_length=8
-(( $# == 1 || $# == 3 )) || false
+(( $# == 1 || $# == 3 ))
 snmp_user_name=$1
 (( $# == 3 )) && {
     snmp_auth_password=$2
