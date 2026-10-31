@@ -79,7 +79,7 @@ rm --force --recursive $temp_path
 ```bash
 build-auto-tools.sh iprange iprange.tar.xz src --disable-man
 install --mode 0755 --owner root --group root -- ./iprange /usr/local/bin/iprange
-command -v iprange >/dev/null
+command -v iprange
 ```
 
 
@@ -98,17 +98,21 @@ iprange --ipv6 google-ipv6.txt cloudflare-ipv6.txt > dns-servers-ipv6
 
 
 
+
+
+
 apt update
 
-Create `check-iprange-ipv6-support.sh` : 
+Create `check-package-availability.sh` : 
 
 ```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
-package_name='iprange'
-package_required_version='2.1.1'
-apt-cache show $package_name &>/dev/null
+
+package_name=$1
+package_required_version=$2
+apt-cache pkgnames | grep --quiet --line-regexp --fixed-strings $package_name
 package_candidate_version=''
 while read -r line_key line_value
 do
@@ -121,6 +125,11 @@ done < <(apt-cache policy $package_name)
 dpkg --compare-versions $package_candidate_version ge $package_required_version
 ```
 
+check-package-availability.sh
+
+iprange 2.0.0
+
+
 ```bash
 bash check-iprange-ipv6-support.sh || printf '%s\n' "IPRanges IPv6 Support NOT Provided By APT Repository !"
 dpkg-query --show --showformat='${Status}\n' iprange
@@ -128,6 +137,9 @@ apt install iprange
 apt purge iprange
 apt autoremove --purge
 ```
+
+
+
 
 
 
