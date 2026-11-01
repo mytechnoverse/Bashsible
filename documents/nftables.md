@@ -502,48 +502,6 @@ journalctl --dmesg --grep='nftables_log_prefix' --lines=10
 
 
 
-
-
-
-
-
-
-sudo journalctl -b -o short-monotonic   -u systemd-modules-load.service   -u systemd-sysctl.service
-[sudo: authenticate] Password:
-[    9.901230] XXX systemd[1]: systemd-sysctl.service: Deactivated successfully.
-[    9.901401] XXX systemd[1]: Stopped systemd-sysctl.service - Apply Kernel Variables.
-[    9.902060] XXX systemd[1]: systemd-modules-load.service: Deactivated successfully.
-[    9.902250] XXX systemd[1]: Stopped systemd-modules-load.service - Load Kernel Modules.
-[   12.144427] XXX systemd[1]: Starting systemd-sysctl.service - Apply Kernel Variables...
-[   12.209525] XXX systemd[1]: Finished systemd-sysctl.service - Apply Kernel Variables.
-XXX@XXX:~$ sudo grep -E 'CONFIG_NF_CONNTRACK=' /boot/config-$(uname -r)
-CONFIG_NF_CONNTRACK=m
-XXX@XXX:~$ sudo journalctl -b -k -o short-monotonic   | grep -iE 'nf_conntrack|nft_ct'
-XXX@XXX:~$ sudo systemd-analyze critical-chain systemd-sysctl.service
-The time when unit became active or started is printed after the "@" character.
-The time the unit took to start is printed after the "+" character.
-
-systemd-sysctl.service +65ms
-└─systemd-modules-load.service @1.592s +115ms
-  └─systemd-journald.socket
-    └─system.slice
-      └─-.slice
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 kernel tuning : ( always start at 60 )
 
 net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
