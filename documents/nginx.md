@@ -1,17 +1,18 @@
 
+https://deb.myguard.nl/articles/nginx-zstd-vs-brotli-vs-zlib-ng-compression/
+https://github.com/myguard-labs/nginx-zstd-module
+https://github.com/google/ngx_brotli
+
+
+
+https://nginx.org/packages/debian/dists/trixie/nginx/source/Sources
+https://nginx.org/packages/debian/pool/nginx/n/nginx
+
+
+https://nginx.org/packages/debian/pool/nginx/n/nginx/nginx_1.30.6.orig.tar.gz
+https://nginx.org/packages/debian/pool/nginx/n/nginx/nginx_1.30.6-1~trixie.debian.tar.xz
+
 # Nginx :
-
-
-
-
-
-
-
-
-
-
-
-
 
 ```bash
 dpkg-query --show --showformat='${Status}\n' nginx
@@ -20,28 +21,13 @@ apt purge nginx
 apt autoremove --purge
 ```
 
----
-
-## Distro Repository : 
-
-```bash
-apt install nginx
-rm -rf /etc/nginx/sites-available/
-rm -rf /etc/nginx/sites-enabled/
-sed '\|/etc/nginx/sites-enabled/\*|d' /etc/nginx/nginx.conf
-```
-
----
-
-## Nginx Repository :
-
 - <https://nginx.org/keys/nginx_signing.key>
 
 ```bash
 dpkg-query --show --showformat='${Status}\n' gpg
 apt install --no-install-recommends gpg
-gpg --dearmor --output /root/downloads/nginx-archive-keyring.pgp /root/downloads/nginx_signing.key
-cp /root/downloads/nginx-archive-keyring.pgp /etc/apt/keyrings/nginx-archive-keyring.pgp
+gpg --dearmor --output nginx-archive-keyring.pgp nginx.key
+cp nginx-archive-keyring.pgp /etc/apt/keyrings/
 ```
 
 ---
@@ -51,7 +37,7 @@ cp /root/downloads/nginx-archive-keyring.pgp /etc/apt/keyrings/nginx-archive-key
 Create `/etc/apt/sources.list.d/nginx.sources` :
 
 ```text
-Types: deb
+Types: deb-src
 URIs: https://nginx.org/packages/ubuntu
 Suites: resolute
 Components: nginx
@@ -65,8 +51,8 @@ Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
 Create `/etc/apt/sources.list.d/nginx.sources` :
 
 ```text
-Types: deb
-URIs: https://nginx.org/packages/ubuntu
+Types: deb-src
+URIs: https://nginx.org/packages/debian
 Suites: trixie
 Components: nginx
 Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
@@ -74,16 +60,166 @@ Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
 
 ---
 
-Create `/etc/apt/preferences.d/nginx.pref` :
-
-```text
-Package: *
-Pin: release o=nginx
-Pin-Priority: 900
-```
-
 ```bash
 apt update
+apt install build-essential fakeroot xz-utils
+apt-get --only-source --download-only source nginx
+apt-get --only-source --yes build-dep nginx
+```
+
+
+
+
+
+apt install cmake ca-certificates libzstd-dev
+apt install --no-install-recommends git
+
+git clone --recurse-submodules https://github.com/google/ngx_brotli brotli
+git clone https://github.com/myguard-labs/nginx-zstd-module.git zstd
+
+
+nginx_path/debian/rules :
+
+--with-stream_ssl_preread_module --add-module=/literal_brotli_abs_path --add-module=/literal_zstd_abs_path
+
+
+
+
+
+
+
+nginx :
+
+( .br ) extension files
+
+
+nginx.conf :
+
+server {} , location {} :
+
+brotli_static on
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+nginx build dependencies :
+
+debhelper
+quilt
+lsb-release
+libssl-dev
+libpcre2-dev
+zlib1g-dev
+
+required modules :
+
+njs : libedit-dev , libxml2-dev , libxslt1-dev
+geo ip : libgeoip-dev
+
+uneeded modules :
+
+xslt : libxslt1-dev
+perl : libperl-dev
+telemetry : cmake , libre2-dev , libc-ares-dev , pkgconf
+image filter : libgd-dev
+acme : clang
+
+
+
+
+
+disable the build dependency check for dpkg-buildpackage
+
+
+
+
+#!/usr/bin/bash
+set -Eeuo pipefail
+shopt -s inherit_errexit
+script_error_trap() {
+    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
+    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
+}
+trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
+script_path=$(pwd)
+(( $# >= 2 ))
+control_file_name=$1
+brotli_archive_name=$2
+zstd_archive_name=$3
+[[ -f $control_file_name ]]
+[[ -f $brotli_archive_name ]]
+temp_path="$(mktemp --directory)/"
+
+
+git clone and then create tar archive from zstd and brotli 
+
+decompress archives to their own temp paths  
+
+nginx_path="$(mktemp --directory)/"
+brotli_path="$(mktemp --directory)/"
+zstd_path="$(mktemp --directory)/"
+
+
+
+
+
+
+
+
+
+
+
+
+source_path="${temp_path}source"
+dpkg-source --extract $control_file_name $source_path
+( cd $source_path && dpkg-checkbuilddeps )
+dpkg-buildpackage --build=binary --unsigned-changes --unsigned-source $source_path
+temp_path_files=$(find $temp_path -maxdepth 1 -type f -name '*.deb' -print)
+readarray -t temp_path_files_list < <(printf '%s' "temp_path_files")
+for this_deb_package_path in "${temp_path_files_list[@]}"
+do
+    cp $this_deb_package_path $script_path
+done
+rm --force --recursive $temp_path
+
+
+
+
+
+nginx_*.deb
+nginx-module-njs_*.deb
+nginx-module-geoip_*.deb
+
+
+
+
+
+nginx -V 2>&1 | tr ' ' '\n' | grep -E 'stream_ssl_preread|brotli|zstd'
+
+
+
+
+
+
+
+
+
+
+
+```bash
 apt install nginx
 nginx -V
 rm -f /etc/nginx/conf.d/default.conf
@@ -208,10 +344,23 @@ server {
 
 
 
+Create `/etc/apt/preferences.d/nginx.pref` :
+
+```text
+Package: *
+Pin: release o=nginx
+Pin-Priority: 900
+```
 
 
 
+## Distro Repository : 
 
-
+```bash
+apt install nginx
+rm -rf /etc/nginx/sites-available/
+rm -rf /etc/nginx/sites-enabled/
+sed '\|/etc/nginx/sites-enabled/\*|d' /etc/nginx/nginx.conf
+```
 
 
