@@ -2,6 +2,8 @@
 https://deb.myguard.nl/articles/nginx-zstd-vs-brotli-vs-zlib-ng-compression/
 https://github.com/myguard-labs/nginx-zstd-module
 https://github.com/google/ngx_brotli
+https://github.com/HanadaLee/ngx_ssl_fingerprint_module
+
 
 
 
@@ -60,31 +62,173 @@ Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
 
 ---
 
+
+
+
+
+
+
+
+apt install brotli
+
+
+compress-extensions-brotli.sh 
+
+#!/usr/bin/bash
+set -Eeuo pipefail
+shopt -s inherit_errexit
+script_error_trap() {
+    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
+    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
+}
+trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
+(( $# >= 2 ))
+target_directory_path=$1
+[[ -d $target_directory_path ]]
+command -v brotli >/dev/null
+target_file_paths=$(find -print $target_directory_path -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.svg' -o -name '*.json' -o -name '*.xml' \))
+readarray -t target_file_path_list < <(printf '%s' "$target_file_paths")
+
+
+compressed_file_path_list
+
+
+
+
+```bash
+bash compress-extensions-brotli.sh /var/www/html html css js svg json xml
+```
+
+apt-get --only-source --yes build-dep nginx !!!! dont !!!!
+
+
+
 ```bash
 apt update
 apt install build-essential fakeroot xz-utils
-apt-get --only-source --download-only source nginx
-apt-get --only-source --yes build-dep nginx
+apt-get --only-source source nginx
+```
+
+
+
+apt install curl
+
+download-github-repo.sh :
+
+github_repo_name=$1
+github_repo_branch=$2
+command -v curl >/dev/null
+temp_path="$(mktemp --directory)/"
+
+
+
+
+apt install ca-certificates
+apt install --no-install-recommends git
+
+Create `download-github-repo-recursive.sh` :
+
+```bash
+#!/usr/bin/bash
+set -Eeuo pipefail
+shopt -s inherit_errexit
+script_error_trap() {
+    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
+    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
+}
+trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
+(( $# >= 3 ))
+repo_name=$1
+repo_github_path=$2
+repo_github_branch=$3
+command -v git >/dev/null
+[[ -s /etc/ssl/certs/ca-certificates.crt ]]
+temp_path="$(mktemp --directory)/"
+repo_github_url="https://github.com/${repo_github_path}"
+git --quiet --single-branch --recurse-submodules clone --branch $repo_github_branch $repo_github_url $temp_path
+find $temp_path -name .git -type d -prune -exec rm --recursive --force -- {} +
+find $temp_path -name .git -type f -delete
+repo_archive_timestamp=$(date --utc '+%Y-%m-%d_%H:%M_UTC')
+repo_archive_name="${repo_name}_${repo_archive_timestamp}.tar.zst"
+tar --create --zstd --file $repo_archive_name $temp_path
+rm --force --recursive $temp_path
+```
+
+```bash
+bash download-github-repo-recursive.sh nginx-brotli google/ngx_brotli master
 ```
 
 
 
 
 
-apt install cmake ca-certificates libzstd-dev
-apt install --no-install-recommends git
 
-git clone --recurse-submodules https://github.com/google/ngx_brotli brotli
-git clone https://github.com/myguard-labs/nginx-zstd-module.git zstd
+
+
+
+
+
+tar --directory=DIR
+
+
+
+
+
+
+
+#!/usr/bin/bash
+set -Eeuo pipefail
+shopt -s inherit_errexit
+script_error_trap() {
+    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
+    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
+}
+trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
+script_path=$(pwd)
+
+
+github_repo_owner
+github_repo_name
+github_repo_branch
+
+"https://github.com/${github_repo_owner}/${github_repo_name}/archive/refs/heads/${github_repo_branch}.tar.gz"
+
+tar --extract -z --strip-components=1 -C "$dest"
+
+
+
+
+
+
+
+
+
+
+
+git clone --quiet --branch master https://github.com/myguard-labs/nginx-zstd-module.git zstd
+git clone --quiet --branch main https://github.com/HanadaLee/ngx_ssl_fingerprint_module ja4
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 nginx_path/debian/rules :
 
---with-stream_ssl_preread_module --add-module=/literal_brotli_abs_path --add-module=/literal_zstd_abs_path
+--with-stream_ssl_module and --with-http_ssl_module
 
+--with-stream_ssl_preread_module --add-module=/literal_brotli_abs_path --add-module=/literal_zstd_abs_path --add-module=/literal_ja4_abs_path
 
-
-
+--without-
 
 
 
@@ -93,19 +237,17 @@ nginx :
 ( .br ) extension files
 
 
-nginx.conf :
 
-server {} , location {} :
+gzip_vary on;
 
-brotli_static on
+location /api/ {
+    zstd on;
+    ssl_fingerprint on;
+}
 
-
-
-
-
-
-
-
+location /static/ {
+    brotli_static on;
+}
 
 
 
@@ -114,6 +256,25 @@ brotli_static on
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+patch --quiet --batch --strip=1 --directory=nginx_path < ja4_path/patches/*.patch
+
+
+compile dependencies :
+
+patch
+libbrotli-dev
+libzstd-dev
 
 nginx build dependencies :
 
@@ -131,14 +292,18 @@ geo ip : libgeoip-dev
 
 uneeded modules :
 
+--with-http_xslt_module
+--with-http_perl_module
+--with-http_image_filter_module
+--with-http_acme_module
+
+
+
 xslt : libxslt1-dev
 perl : libperl-dev
 telemetry : cmake , libre2-dev , libc-ares-dev , pkgconf
 image filter : libgd-dev
 acme : clang
-
-
-
 
 
 disable the build dependency check for dpkg-buildpackage
