@@ -10,10 +10,6 @@ https://github.com/HanadaLee/ngx_ssl_fingerprint_module
 https://nginx.org/packages/debian/dists/trixie/nginx/source/Sources
 https://nginx.org/packages/debian/pool/nginx/n/nginx
 
-
-https://nginx.org/packages/debian/pool/nginx/n/nginx/nginx_1.30.6.orig.tar.gz
-https://nginx.org/packages/debian/pool/nginx/n/nginx/nginx_1.30.6-1~trixie.debian.tar.xz
-
 # Nginx :
 
 ```bash
@@ -68,12 +64,13 @@ Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
 
 
 
-
+```bash
 apt install brotli
+```
 
+Create `compress-extensions-brotli.sh` : 
 
-compress-extensions-brotli.sh 
-
+```bash
 #!/usr/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -82,22 +79,30 @@ script_error_trap() {
     printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
 }
 trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
-(( $# >= 2 ))
+(( $# == 1 ))
 target_directory_path=$1
 [[ -d $target_directory_path ]]
 command -v brotli >/dev/null
-target_file_paths=$(find -print $target_directory_path -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.svg' -o -name '*.json' -o -name '*.xml' \))
-readarray -t target_file_path_list < <(printf '%s' "$target_file_paths")
-
-
-compressed_file_path_list
-
-
-
+path_delimiter=$'\x1f'
+target_file_paths=$(find $target_directory_path -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.svg' -o -name '*.json' -o -name '*.xml' \) -printf "%p${path_delimiter}")
+readarray -d "$path_delimiter" -t target_file_path_list < <(printf '%s' "$target_file_paths")
+for target_file_path in "${target_file_path_list[@]}"
+do
+    compressed_file_path="${target_file_path}.br"
+    [[ -f $compressed_file_path && $compressed_file_path -nt $target_file_path ]] || {
+        rm --recursive --force $compressed_file_path
+        brotli --quality=11 --stdout $target_file_path > $compressed_file_path
+    }
+done
+```
 
 ```bash
-bash compress-extensions-brotli.sh /var/www/html html css js svg json xml
+bash compress-files-brotli.sh /var/www/html/
 ```
+
+
+
+
 
 apt-get --only-source --yes build-dep nginx !!!! dont !!!!
 
@@ -110,21 +115,24 @@ apt-get --only-source source nginx
 ```
 
 
-
+```bash
 apt install curl
+```
 
-download-github-repo.sh :
+Create `download-github-repo.sh` :
 
+```bash
 github_repo_name=$1
 github_repo_branch=$2
 command -v curl >/dev/null
 temp_path="$(mktemp --directory)/"
+```
 
 
-
-
+```bash
 apt install ca-certificates
 apt install --no-install-recommends git
+```
 
 Create `download-github-repo-recursive.sh` :
 
@@ -200,7 +208,7 @@ tar --extract -z --strip-components=1 -C "$dest"
 
 
 
-
+ktls ????
 
 
 
