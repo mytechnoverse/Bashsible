@@ -3,9 +3,20 @@ https://deb.myguard.nl/articles/nginx-zstd-vs-brotli-vs-zlib-ng-compression/
 https://github.com/myguard-labs/nginx-zstd-module
 https://github.com/google/ngx_brotli
 https://github.com/HanadaLee/ngx_ssl_fingerprint_module
+https://tls.peet.ws/
+https://httpcloak.dev/reference/presets
+https://httpcloak.dev/
 
 
 
+disable http3 ???
+
+
+
+http3 is advertised as ( Alt-Svc ) in negotiation
+
+
+nginx log ???
 
 https://nginx.org/packages/debian/dists/trixie/nginx/source/Sources
 https://nginx.org/packages/debian/pool/nginx/n/nginx
@@ -57,6 +68,364 @@ Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
 ```
 
 ---
+
+
+
+
+nginx :
+
+server {
+    ...
+    location = /ja4 {
+        default_type application/json;
+        return 200 '{"user_agent": "$http_user_agent", "tls": {"ja4": "$ssl_fingerprint_ja4"}}';
+    }
+}
+
+Golang :
+
+
+
+
+
+
+
+https://httpcloak.dev/http-protocols/http1
+
+generate 2 values for http1.1 and h2 for websockets
+
+
+
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+	"github.com/sardanioss/httpcloak"
+)
+
+type JA4Response struct {
+	UserAgent string `json:"user_agent"`
+	TLS struct {
+		JA4 string `json:"ja4"`
+	} `json:"tls"`
+}
+
+func main() {
+	targetURL := "https://xyz.internal/ja4"
+	presets := []string{
+		"chrome-latest-windows",
+		"chrome-latest-android",
+        "chrome-latest-ios",
+	}
+	for _, preset := range presets {
+		s := httpcloak.NewSession(preset,
+			httpcloak.WithSessionTimeout(20*time.Second),
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		resp, err := s.Get(ctx, targetURL)
+		cancel()
+		s.Close()
+		if err != nil {
+			fmt.Printf("Preset %s: Request failed: %v\n", preset, err)
+			continue
+		}
+		var result JA4Response
+		err = resp.JSON(&result)
+		resp.Close()
+		if err != nil {
+			fmt.Printf("Preset %s: Failed to parse JSON: %v\n", preset, err)
+			continue
+		}
+		fmt.Printf("Preset: %s\n", preset)
+		fmt.Printf("JA4: %s\n", result.TLS.JA4)
+		fmt.Printf("User-Agent: %s\n", result.UserAgent)
+		fmt.Println("---")
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/sardanioss/httpcloak"
+)
+
+type JA4Response struct {
+	UserAgent string `json:"user_agent"`
+	TLS       struct {
+		JA4 string `json:"ja4"`
+	} `json:"tls"`
+}
+
+func main() {
+	targetURL := "https://xyz.internal/ja4"
+
+	presets := []string{
+		"chrome-latest-windows",
+		"chrome-latest-android",
+		"chrome-latest-ios",
+	}
+
+	// Protocol variants to test: h2 (default) and h1 (forced).
+	protocols := []struct {
+		name string
+		opts []httpcloak.SessionOption
+	}{
+		{"h2", nil}, // Default negotiation will pick h2 against an http2-enabled Nginx
+		{"h1", []httpcloak.SessionOption{httpcloak.WithForceHTTP1()}},
+	}
+
+	for _, preset := range presets {
+		for _, proto := range protocols {
+			// Build session options: always set a timeout, then append protocol-specific opts.
+			opts := []httpcloak.SessionOption{
+				httpcloak.WithSessionTimeout(20 * time.Second),
+			}
+			opts = append(opts, proto.opts...)
+
+			s := httpcloak.NewSession(preset, opts...)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			resp, err := s.Get(ctx, targetURL)
+			cancel()
+			s.Close()
+
+			if err != nil {
+				fmt.Printf("❌ Preset %s [%s]: Request failed: %v\n", preset, proto.name, err)
+				continue
+			}
+
+			var result JA4Response
+			err = resp.JSON(&result)
+			resp.Close()
+
+			if err != nil {
+				fmt.Printf("❌ Preset %s [%s]: Failed to parse JSON: %v\n", preset, proto.name, err)
+				continue
+			}
+
+			fmt.Printf("✅ Preset: %s\n", preset)
+			fmt.Printf("   Protocol: %s\n", proto.name)
+			fmt.Printf("   JA4: %s\n", result.TLS.JA4)
+			fmt.Printf("   User-Agent: %s\n", result.UserAgent)
+			fmt.Println("---")
+		}
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+JA4 value is different for each of below combinations :
+1. browser ( chrome )
+2. browser version ( chrome 155 )
+3. platform ( windows , android , ios )
+4. http version ( first ALPN value : h2 or http1.1 )
+5. presence of SNI Header ( connecting with domain or ip )
+6. session resumption ( browser refresh )
+
+normal and grpc connection use http alpn 2 and 1.1
+websockets use http alpn 1.1
+
+
+Since Azar 1404
+
+Chrome versions :
+
+desktop : 143 - 155
+android : 143 - 148 , 150 -155
+ios     : 143 - 148 , 150 - 152 , 155
+
+
+chrome-latest-windows
+chrome-latest-android
+chrome-latest-ios
+
+chrome_preset_name="chrome-${chrome_version}-${chrome_platform}"
+
+
+
+
+
+--- Specify Source IP :
+
+IPv4 :
+
+httpcloak.NewSession( "chrome-latest", httpcloak.WithLocalAddress("192.168.1.100"),)
+WithSessionPreferIPv4()
+
+IPv6 :
+
+httpcloak.NewSession( "chrome-latest", httpcloak.WithLocalAddress("2001:db8::1234"),)
+
+
+--- Browser Refresh 0-RTT :
+
+After closing response :
+
+sess.Refresh()
+resp, err := sess.Get(ctx, "https://tls.peet.ws/api/all")
+if err != nil {
+	panic(err)
+}
+defer resp.Close()
+
+--- Preset Loop :
+
+func main() {
+    for _, name := range []string{ "chrome-latest" , "android-chrome-latest" , "chrome-latest-ios" } {
+        s := httpcloak.NewSession(name)
+        resp, _ := s.Get(context.Background(), "https://tls.peet.ws/api/all")
+        body, _ := io.ReadAll(resp.Body)
+        resp.Body.Close()
+        s.Close()
+        fmt.Println(name, string(body))
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+go get github.com/sardanioss/httpcloak
+
+
+
+
+
+
+
+
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+	"github.com/sardanioss/httpcloak"
+)
+
+
+
+
+func main() {
+
+    preset_name='chrome-latest-windows'
+
+	sess := httpcloak.NewSession(
+        preset_name ,
+		httpcloak.WithSessionTimeout(30*time.Second),
+	)
+	defer sess.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := sess.Get(ctx, "https://tls.peet.ws/api/all")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Close()
+
+	fmt.Println("status:", resp.StatusCode)
+
+	body, _ := resp.Text()
+	fmt.Println(body)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+return json object with below sturecture in nginx :
+
+.tls.ja4
+
+.user_agent
+
+
+
 
 
 
@@ -240,22 +609,29 @@ nginx_path/debian/rules :
 
 
 
-nginx :
-
-( .br ) extension files
 
 
-
-gzip_vary on;
+http {
+    gzip_vary on;
+    map $ssl_fingerprint_ja4 $ja4_allowed {
+        default 0;
+        "t13d1516h2_8daaf6152771_b186095e22b6" 1;
+    }
+}
 
 location /api/ {
     zstd on;
     ssl_fingerprint on;
+    if ($ja4_allowed = 0) { return 403; }
 }
 
 location /static/ {
     brotli_static on;
 }
+
+
+
+
 
 
 
