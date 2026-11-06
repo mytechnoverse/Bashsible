@@ -70,216 +70,203 @@ Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
 ---
 
 
-
+go get github.com/sardanioss/httpcloak
 
 nginx :
+
+for tls session resumption , disable TLS 1.3 0-RTT and instead use stateless TLS 1.3 session tickets to avoid replay attacks .
+manually generate the session ticket key and put the same key in every nginx instance to allow cross instance session resumption .
+
+openssl rand 48 > /etc/nginx/tls/ticket-current.key
+
+ssl_protocols TLSv1.3;
+ssl_session_tickets on;
+ssl_session_ticket_key /etc/nginx/tls/ticket-current.key;
+ssl_session_cache none;
+ssl_session_timeout 10m;
+ssl_early_data off;
+
+
+
+generate the value using a keyed hash of a secret and distribute it on every nginx machine
+add the key the way that encrypted .key files were added in nginx using systemd ( check chatgpt response )
+
+
+
+For each ( Browser , Browser Version , Platform ) combination , there are 4 variations ( JA4 Hashes ) for TLS CLientHello Message :
+
+1. Websockets use different ALPN Extension ( application_layer_protocol_negotiation ) :
+
+ALPN Values :
+
+Default   : [ "h2" , "http/1.1" ]
+GRPC      : [ "h2" , "http/1.1" ]
+Websocket : [ "http/1.1" ]
+
+2. Resumed ( Refreshed ) TLS Connections include PSK Specific Extensions ( pre_shared_key , psk_key_exchange_modes ) with stateless session tickets .
+
+
+
+
+
+
 
 server {
     ...
     location = /ja4 {
         default_type application/json;
-        return 200 '{"user_agent": "$http_user_agent", "tls": {"ja4": "$ssl_fingerprint_ja4"}}';
+        return 200 '{"tls": {"ja4": "$ssl_fingerprint_ja4"}}';
     }
 }
 
 Golang :
 
-
-
-
-
-
-
-https://httpcloak.dev/http-protocols/http1
-
-generate 2 values for http1.1 and h2 for websockets
-
-
-
-
 package main
 
 import (
-	"context"
-	"fmt"
-	"time"
-	"github.com/sardanioss/httpcloak"
+    "os"
+    "flag"
+    "fmt"
+    "net"
+    "context"
+    "time"
+    "strings"
+    "strconv"
+    "encoding/json"
+    "github.com/sardanioss/httpcloak"
 )
 
-type JA4Response struct {
-	UserAgent string `json:"user_agent"`
-	TLS struct {
-		JA4 string `json:"ja4"`
-	} `json:"tls"`
+type endpoint_json_schema struct {
+    TLS struct {
+        JA4 string
+    }
+}
+
+const chrome_min_allowed_version = 143
+const chrome_allowed_platforms_list = []string{ "windows" , "macos" , "android" , "ios" }
+const dns_lookup_timeout = 1
+const request_timeout_seconds = 5
+
+func application_main_function( endpoint_domain string , endpoint_path string ) int {
+
+    if net.ParseIP( endpoint_domain ) != nil { return 1 }
+    ctx , cancel := context.WithTimeout( context.Background() , dns_lookup_timeout * time.Second )
+    defer cancel()
+    _ , domain_lookup_error := net.DefaultResolver.LookupIP( ctx , "ip4" , endpoint_domain )
+    if domain_lookup_error != nil { return 1 }
+
+    endpoint_url := "https://" + endpoint_domain + endpoint_path
+    presets_list := httpcloak.Presets()
+    var target_presets_list []string
+    for _ , this_preset := range presets_list {
+        this_preset_parts_list := strings.Split( this_preset , "-" )
+        if len( this_preset_parts_list ) == 3 {
+            this_preset_browser := this_preset_parts_list[ 0 ]
+            this_preset_version , this_preset_version_error := strconv.Atoi( this_preset_parts_list[ 1 ] )
+            this_preset_version_is_allowed := false
+            if this_preset_version_error == nil {
+                if this_preset_version >= chrome_min_allowed_version {
+                    this_preset_version_is_allowed = true
+                }
+            }
+            this_preset_platform := this_preset_parts_list[ 2 ]
+            this_preset_platform_is_allowed := false
+            for _ , this_allowed_platform := range chrome_allowed_platforms_list {
+                if this_preset_platform == this_allowed_platform {
+                    this_preset_platform_is_allowed = true
+                    break
+                }
+            }
+            if this_preset_browser == "chrome" && this_preset_version_is_allowed && this_preset_platform_is_allowed {
+                target_presets_list = append( target_presets_list , this_preset )
+            }
+        }
+    }
+    for _ , this_preset := range target_presets_list {}
+
+
+
+
+    return 0
 }
 
 func main() {
-	targetURL := "https://xyz.internal/ja4"
-	presets := []string{
-		"chrome-latest-windows",
-		"chrome-latest-android",
-        "chrome-latest-ios",
-	}
-	for _, preset := range presets {
-		s := httpcloak.NewSession(preset,
-			httpcloak.WithSessionTimeout(20*time.Second),
-		)
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		resp, err := s.Get(ctx, targetURL)
-		cancel()
-		s.Close()
-		if err != nil {
-			fmt.Printf("Preset %s: Request failed: %v\n", preset, err)
-			continue
-		}
-		var result JA4Response
-		err = resp.JSON(&result)
-		resp.Close()
-		if err != nil {
-			fmt.Printf("Preset %s: Failed to parse JSON: %v\n", preset, err)
-			continue
-		}
-		fmt.Printf("Preset: %s\n", preset)
-		fmt.Printf("JA4: %s\n", result.TLS.JA4)
-		fmt.Printf("User-Agent: %s\n", result.UserAgent)
-		fmt.Println("---")
-	}
+    endpoint_domain := flag.String( "domain" , "" , "" )
+    endpoint_path := flag.String( "path" , "" , "" )
+    flag.Parse()
+    if *endpoint_domain == "" || *endpoint_path == "" {
+        os.Exit( 1 )
+    }
+    application_exit_code := application_main_function(
+        *endpoint_domain ,
+        *endpoint_path
+    )
+    os.Exit( application_exit_code )
 }
 
+normal requests get 2 hashes for with and without session resumption
+websocket gets 2 hashes for with and without session resumption
+
+FINALLLLLLLLLLLLLLLL pattern :::::
 
 
-
-
-
-
-
-
-
-
-
-package main
-
-import (
-	"context"
-	"fmt"
-	"time"
-
-	"github.com/sardanioss/httpcloak"
-)
-
-type JA4Response struct {
-	UserAgent string `json:"user_agent"`
-	TLS       struct {
-		JA4 string `json:"ja4"`
-	} `json:"tls"`
+func fetchJA4( sess *httpcloak.Session ) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resp, err := sess.Get(ctx, "https://tls.peet.ws/api/all")
+	if err != nil { return 1 }
+	defer resp.Close()
+	body, err := resp.Bytes()
+	if err != nil { return 1 }
+	var pr peetResponse
+    err := json.Unmarshal( body , &pr )
+	if err != nil { return 1 }
+    pr.TLS.JA4
 }
 
 func main() {
-	targetURL := "https://xyz.internal/ja4"
-
-	presets := []string{
-		"chrome-latest-windows",
-		"chrome-latest-android",
-		"chrome-latest-ios",
-	}
-
-	// Protocol variants to test: h2 (default) and h1 (forced).
-	protocols := []struct {
-		name string
-		opts []httpcloak.SessionOption
-	}{
-		{"h2", nil}, // Default negotiation will pick h2 against an http2-enabled Nginx
-		{"h1", []httpcloak.SessionOption{httpcloak.WithForceHTTP1()}},
-	}
-
-	for _, preset := range presets {
-		for _, proto := range protocols {
-			// Build session options: always set a timeout, then append protocol-specific opts.
-			opts := []httpcloak.SessionOption{
-				httpcloak.WithSessionTimeout(20 * time.Second),
-			}
-			opts = append(opts, proto.opts...)
-
-			s := httpcloak.NewSession(preset, opts...)
-
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			resp, err := s.Get(ctx, targetURL)
-			cancel()
-			s.Close()
-
-			if err != nil {
-				fmt.Printf("❌ Preset %s [%s]: Request failed: %v\n", preset, proto.name, err)
-				continue
-			}
-
-			var result JA4Response
-			err = resp.JSON(&result)
-			resp.Close()
-
-			if err != nil {
-				fmt.Printf("❌ Preset %s [%s]: Failed to parse JSON: %v\n", preset, proto.name, err)
-				continue
-			}
-
-			fmt.Printf("✅ Preset: %s\n", preset)
-			fmt.Printf("   Protocol: %s\n", proto.name)
-			fmt.Printf("   JA4: %s\n", result.TLS.JA4)
-			fmt.Printf("   User-Agent: %s\n", result.UserAgent)
-			fmt.Println("---")
-		}
-	}
+	preset := "chrome-latest"
+	defaultSess := httpcloak.NewSession(preset)
+	defer defaultSess.Close()
+	fetchJA4( defaultSess )
+	defaultSess.Refresh()
+	fetchJA4( defaultSess )
+	h1Sess := httpcloak.NewSession( preset , httpcloak.WithForceHTTP1() )
+	defer h1Sess.Close()
+	fetchJA4( h1Sess )
+	h1Sess.Refresh()
+	fetchJA4( h1Sess )
 }
 
 
 
+============================================================================================
 
 
+func generate_fingerprint( endpoint_url string , preset_name string , simulate_websocket bool , simulate_refresh bool ) bool {
+    session_options_list := []httpcloak.SessionOption{
+        httpcloak.WithSessionPreferIPv4(),
+        httpcloak.WithSessionTimeout( request_timeout_seconds * time.Second )
+    }
+    if simulate_websocket {
+        session_options_list = append( session_options_list , httpcloak.WithForceHTTP1() )
+    }
+    if simulate_refresh {}
+    this_session := httpcloak.NewSession( preset_name , session_options_list... )
+    defer this_session.Close()
+    request_context , request_cancel := context.WithTimeout( context.Background() , request_timeout_seconds * time.Second )
+    defer request_cancel()
+    this_response_body , this_request_status := this_session.Get( request_context , endpoint_url )
+    if this_request_status != nil { return false }
+    defer this_response_body.Close()
+    var this_response_json endpoint_json_schema
+    this_response_schema_error := this_response_body.JSON( &this_response_json )
+    if this_response_schema_error != nil { return false }
+    if this_response_json.TLS.JA4 == "" { return false }
+    return true
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-JA4 value is different for each of below combinations :
-1. browser ( chrome )
-2. browser version ( chrome 155 )
-3. platform ( windows , android , ios )
-4. http version ( first ALPN value : h2 or http1.1 )
-5. presence of SNI Header ( connecting with domain or ip )
-6. session resumption ( browser refresh )
-
-normal and grpc connection use http alpn 2 and 1.1
-websockets use http alpn 1.1
+=========================================================================
 
 
 Since Azar 1404
@@ -291,153 +278,15 @@ android : 143 - 148 , 150 -155
 ios     : 143 - 148 , 150 - 152 , 155
 
 
-chrome-latest-windows
-chrome-latest-android
-chrome-latest-ios
-
-chrome_preset_name="chrome-${chrome_version}-${chrome_platform}"
-
-
-
-
-
---- Specify Source IP :
-
-IPv4 :
-
-httpcloak.NewSession( "chrome-latest", httpcloak.WithLocalAddress("192.168.1.100"),)
-WithSessionPreferIPv4()
-
-IPv6 :
-
-httpcloak.NewSession( "chrome-latest", httpcloak.WithLocalAddress("2001:db8::1234"),)
-
-
---- Browser Refresh 0-RTT :
-
-After closing response :
-
-sess.Refresh()
-resp, err := sess.Get(ctx, "https://tls.peet.ws/api/all")
-if err != nil {
-	panic(err)
-}
-defer resp.Close()
-
---- Preset Loop :
-
-func main() {
-    for _, name := range []string{ "chrome-latest" , "android-chrome-latest" , "chrome-latest-ios" } {
-        s := httpcloak.NewSession(name)
-        resp, _ := s.Get(context.Background(), "https://tls.peet.ws/api/all")
-        body, _ := io.ReadAll(resp.Body)
-        resp.Body.Close()
-        s.Close()
-        fmt.Println(name, string(body))
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-go get github.com/sardanioss/httpcloak
-
-
-
-
-
-
-
-
-
-package main
-
-import (
-	"context"
-	"fmt"
-	"time"
-	"github.com/sardanioss/httpcloak"
-)
-
-
-
-
-func main() {
-
-    preset_name='chrome-latest-windows'
-
-	sess := httpcloak.NewSession(
-        preset_name ,
-		httpcloak.WithSessionTimeout(30*time.Second),
-	)
-	defer sess.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	resp, err := sess.Get(ctx, "https://tls.peet.ws/api/all")
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Close()
-
-	fmt.Println("status:", resp.StatusCode)
-
-	body, _ := resp.Text()
-	fmt.Println(body)
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-return json object with below sturecture in nginx :
-
-.tls.ja4
-
-.user_agent
-
-
-
-
-
-
-
-
-
-
 ```bash
 apt install brotli
 ```
 
 Create `compress-extensions-brotli.sh` : 
+
+
+
+add wasm files also ?????
 
 ```bash
 #!/usr/bin/bash
