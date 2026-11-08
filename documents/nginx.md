@@ -8,14 +8,6 @@ https://httpcloak.dev/reference/presets
 https://httpcloak.dev/
 
 
-
-disable http3 ???
-
-
-
-http3 is advertised as ( Alt-Svc ) in negotiation
-
-
 nginx log ???
 
 https://nginx.org/packages/debian/dists/trixie/nginx/source/Sources
@@ -282,11 +274,7 @@ ios     : 143 - 148 , 150 - 152 , 155
 apt install brotli
 ```
 
-Create `compress-extensions-brotli.sh` : 
-
-
-
-add wasm files also ?????
+Create `compress-extensions-brotli.sh` :
 
 ```bash
 #!/usr/bin/bash
@@ -302,7 +290,7 @@ target_directory_path=$1
 [[ -d $target_directory_path ]]
 command -v brotli >/dev/null
 path_delimiter=$'\x1f'
-target_file_paths=$(find $target_directory_path -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.svg' -o -name '*.json' -o -name '*.xml' \) -printf "%p${path_delimiter}")
+target_file_paths=$(find $target_directory_path -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.mjs' -o -name '*.svg' -o -name '*.json' -o -name '*.xml' -o -name '*.wasm' -o -name '*.txt' -o -name '*.webmanifest' \) -size +1k -printf "%p${path_delimiter}")
 readarray -d "$path_delimiter" -t target_file_path_list < <(printf '%s' "$target_file_paths")
 for target_file_path in "${target_file_path_list[@]}"
 do
@@ -318,6 +306,10 @@ done
 bash compress-files-brotli.sh /var/www/html/
 ```
 
+
+
+include safari
+add a websocket include option 
 
 
 
