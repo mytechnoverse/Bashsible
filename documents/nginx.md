@@ -128,146 +128,148 @@ import (
     "github.com/sardanioss/httpcloak"
 )
 
-type endpoint_json_schema struct {
+const chromeMinAllowedVersion = 143
+var chromeAllowedPlatformsList = []string{ "windows" , "macos" , "android" , "ios" }
+
+type endpointSchema struct {
     TLS struct {
         JA4 string
     }
 }
 
-const chrome_min_allowed_version = 143
-const chrome_allowed_platforms_list = []string{ "windows" , "macos" , "android" , "ios" }
-const dns_lookup_timeout = 1
-const request_timeout_seconds = 5
+var fingerprintsDictionary = make( map[string]string )
+var fingerprintsList []string
 
-func application_main_function( endpoint_domain string , endpoint_path string ) int {
+func getSessionFingerprint( sessionObj *httpcloak.Session , endpointURL string ) error {
+    requestContext , requestCancel := context.WithTimeout( context.Background() , 1 * time.Second )
+    defer requestCancel()
+    ResponseObj , requestError := sessionObj.Get( requestContext , endpointURL )
+    if requestError != nil { return fmt.Errorf( "%w" , requestError ) }
+    defer ResponseObj.Close()
+    var ResponseJSON endpointSchema
+    ResponseSchemaError := ResponseObj.JSON( &ResponseJSON )
+    if ResponseSchemaError != nil { return fmt.Errorf( "error" ) }
+    if ResponseJSON.TLS.JA4 == "" { return fmt.Errorf( "error" ) }
+    sessionFingerprint := ResponseJSON.TLS.JA4
+    _ , ok := fingerprintsDictionary[ sessionFingerprint ]
+    if !ok {
+        fingerprintsDictionary[ sessionFingerprint ] = ""
+        fingerprintsList = append( fingerprintsList , sessionFingerprint )
+    }
+    return nil
+}
 
-    if net.ParseIP( endpoint_domain ) != nil { return 1 }
-    ctx , cancel := context.WithTimeout( context.Background() , dns_lookup_timeout * time.Second )
-    defer cancel()
-    _ , domain_lookup_error := net.DefaultResolver.LookupIP( ctx , "ip4" , endpoint_domain )
-    if domain_lookup_error != nil { return 1 }
+func getDefaultFingerprint( presetName string , endpointURL string ) error {
+    defaultSessionsOptionsList := []httpcloak.SessionOption{
+        httpcloak.WithSessionPreferIPv4() ,
+        httpcloak.WithSessionTimeout( 1 * time.Second )
+    }
+    defaultSession := httpcloak.NewSession( presetName , defaultSessionsOptionsList... )
+    defer defaultSession.Close()
+    defaultSessionFreshError := getSessionFingerprint( defaultSession , endpointURL )
+    if defaultSessionFreshError != nil { return fmt.Errorf( "%w" , defaultSessionFreshError ) }
+    defaultSession.Refresh()
+    defaultSessionRefreshError := getSessionFingerprint( defaultSession , endpointURL )
+    if defaultSessionRefreshError != nil { return fmt.Errorf( "%w" , defaultSessionRefreshError ) }
+    return nil
+}
 
-    endpoint_url := "https://" + endpoint_domain + endpoint_path
-    presets_list := httpcloak.Presets()
-    var target_presets_list []string
-    for _ , this_preset := range presets_list {
-        this_preset_parts_list := strings.Split( this_preset , "-" )
-        if len( this_preset_parts_list ) == 3 {
-            this_preset_browser := this_preset_parts_list[ 0 ]
-            this_preset_version , this_preset_version_error := strconv.Atoi( this_preset_parts_list[ 1 ] )
-            this_preset_version_is_allowed := false
-            if this_preset_version_error == nil {
-                if this_preset_version >= chrome_min_allowed_version {
-                    this_preset_version_is_allowed = true
+func getWebsocketsFingerprint( presetName string , endpointURL string ) error {
+    websocketsSessionsOptionsList := []httpcloak.SessionOption{
+        httpcloak.WithSessionPreferIPv4() ,
+        httpcloak.WithSessionTimeout( 1 * time.Second ),
+        httpcloak.WithForceHTTP1()
+    }
+    websocketsSession := httpcloak.NewSession( presetName , websocketsSessionsOptionsList... )
+    defer websocketsSession.Close()
+    websocketSessionFreshError := getSessionFingerprint( websocketsSession , endpointURL )
+    if websocketSessionFreshError != nil { return fmt.Errorf( "%w" , websocketSessionFreshError ) }
+    websocketsSession.Refresh()
+    websocketSessionRefreshError := getSessionFingerprint( websocketsSession , endpointURL )
+    if websocketSessionRefreshError != nil { return fmt.Errorf( "%w" , websocketSessionRefreshError ) }
+    return nil
+}
+
+func getPresetFingerprint( presetName string , endpointURL string , withWebsockets bool ) error {
+    defaultSessionError := getDefaultFingerprint( presetName , endpointURL )
+    if defaultSessionError != nil { return fmt.Errorf( "%s %w" , presetName , defaultSessionError ) }
+    if withWebsockets {
+        websocketsSessionError := getWebsocketsFingerprint( presetName , endpointURL )
+        if websocketsSessionError != nil { return fmt.Errorf( "%s %w" , presetName , websocketsSessionError ) }
+    }
+    return nil
+}
+
+func applicationMain( endpointDomain string , endpointPath string , withWebsockets bool ) error {
+    if net.ParseIP( endpointDomain ) != nil { return fmt.Errorf( "error" ) }
+    dnsLookupContext , dnsLookupCancel := context.WithTimeout( context.Background() , 1 * time.Second )
+    defer dnsLookupCancel()
+    _ , dnsLookupError := net.DefaultResolver.LookupIP( dnsLookupContext , "ip4" , endpointDomain )
+    if dnsLookupError != nil { return fmt.Errorf( "%w" , dnsLookupError ) }
+    endpointURL := "https://" + endpointDomain + endpointPath
+    presetsList := httpcloak.Presets()
+    var targetPresetsList []string
+    for _ , thisPreset := range presetsList {
+        thisPresetPartsList := strings.Split( thisPreset , "-" )
+        if len( thisPresetPartsList ) < 2 { continue }
+        thisPresetBrowser := thisPresetPartsList[ 0 ]
+        thisPresetVersion , thisPresetVersionError := strconv.Atoi( thisPresetPartsList[ 1 ] )
+        if thisPresetVersionError != nil { continue }
+        if thisPresetBrowser == "safari" {
+            targetPresetsList = append( targetPresetsList , thisPreset )
+        }
+        if thisPresetBrowser == "chrome" {
+            if thisPresetVersion >= chromeMinAllowedVersion {
+                if len( thisPresetPartsList ) == 3 {
+                    thisPresetPlatform := thisPresetPartsList[ 2 ]
+                    for _ , thisAllowedPlatform := range chromeAllowedPlatformsList {
+                        if thisPresetPlatform == thisAllowedPlatform {
+                            targetPresetsList = append( targetPresetsList , thisPreset )
+                            break
+                        }
+                    }
                 }
-            }
-            this_preset_platform := this_preset_parts_list[ 2 ]
-            this_preset_platform_is_allowed := false
-            for _ , this_allowed_platform := range chrome_allowed_platforms_list {
-                if this_preset_platform == this_allowed_platform {
-                    this_preset_platform_is_allowed = true
-                    break
-                }
-            }
-            if this_preset_browser == "chrome" && this_preset_version_is_allowed && this_preset_platform_is_allowed {
-                target_presets_list = append( target_presets_list , this_preset )
             }
         }
     }
-    for _ , this_preset := range target_presets_list {}
-
-
-
-
-    return 0
+    for _ , thisPreset := range targetPresetsList {
+        presetFingerprintError := getPresetFingerprint( thisPreset , endpointURL , withWebsockets )
+        if presetFingerprintError != nil { return fmt.Errorf( "%w" , presetFingerprintError ) }
+    }
+    return nil
 }
 
 func main() {
-    endpoint_domain := flag.String( "domain" , "" , "" )
-    endpoint_path := flag.String( "path" , "" , "" )
+    endpointDomain := flag.String( "domain" , "" , "" )
+    endpointPath := flag.String( "path" , "" , "" )
+    withWebsockets := flag.Bool( "with-websockets" , false , "" )
     flag.Parse()
-    if *endpoint_domain == "" || *endpoint_path == "" {
+    requiredArgumentsList := []string{ *endpointDomain , *endpointPath }
+    requiredArgumentsCount := len( requiredArgumentsList )
+    for requiredArgumentsIndex := 0 ; requiredArgumentsIndex < requiredArgumentsCount ; requiredArgumentsIndex++ {
+        if requiredArgumentsList[ requiredArgumentsIndex ] == "" {
+            os.Exit( 1 )
+        }
+    }
+    applicationError := applicationMain(
+        *endpointDomain ,
+        *endpointPath ,
+        *withWebsockets
+    )
+    if applicationError != nil {
+        fmt.Fprintf( os.Stderr , "Error : %v\n" , applicationError )
         os.Exit( 1 )
     }
-    application_exit_code := application_main_function(
-        *endpoint_domain ,
-        *endpoint_path
-    )
-    os.Exit( application_exit_code )
-}
-
-normal requests get 2 hashes for with and without session resumption
-websocket gets 2 hashes for with and without session resumption
-
-FINALLLLLLLLLLLLLLLL pattern :::::
-
-
-func fetchJA4( sess *httpcloak.Session ) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	resp, err := sess.Get(ctx, "https://tls.peet.ws/api/all")
-	if err != nil { return 1 }
-	defer resp.Close()
-	body, err := resp.Bytes()
-	if err != nil { return 1 }
-	var pr peetResponse
-    err := json.Unmarshal( body , &pr )
-	if err != nil { return 1 }
-    pr.TLS.JA4
-}
-
-func main() {
-	preset := "chrome-latest"
-	defaultSess := httpcloak.NewSession(preset)
-	defer defaultSess.Close()
-	fetchJA4( defaultSess )
-	defaultSess.Refresh()
-	fetchJA4( defaultSess )
-	h1Sess := httpcloak.NewSession( preset , httpcloak.WithForceHTTP1() )
-	defer h1Sess.Close()
-	fetchJA4( h1Sess )
-	h1Sess.Refresh()
-	fetchJA4( h1Sess )
+    for _ , outputLine := range fingerprintsList { fmt.Fprintln( os.Stdout , outputLine ) }
 }
 
 
 
-============================================================================================
 
 
-func generate_fingerprint( endpoint_url string , preset_name string , simulate_websocket bool , simulate_refresh bool ) bool {
-    session_options_list := []httpcloak.SessionOption{
-        httpcloak.WithSessionPreferIPv4(),
-        httpcloak.WithSessionTimeout( request_timeout_seconds * time.Second )
-    }
-    if simulate_websocket {
-        session_options_list = append( session_options_list , httpcloak.WithForceHTTP1() )
-    }
-    if simulate_refresh {}
-    this_session := httpcloak.NewSession( preset_name , session_options_list... )
-    defer this_session.Close()
-    request_context , request_cancel := context.WithTimeout( context.Background() , request_timeout_seconds * time.Second )
-    defer request_cancel()
-    this_response_body , this_request_status := this_session.Get( request_context , endpoint_url )
-    if this_request_status != nil { return false }
-    defer this_response_body.Close()
-    var this_response_json endpoint_json_schema
-    this_response_schema_error := this_response_body.JSON( &this_response_json )
-    if this_response_schema_error != nil { return false }
-    if this_response_json.TLS.JA4 == "" { return false }
-    return true
-}
 
-=========================================================================
-
-
-Since Azar 1404
-
-Chrome versions :
-
-desktop : 143 - 155
-android : 143 - 148 , 150 -155
-ios     : 143 - 148 , 150 - 152 , 155
+out=$(./app --domain example.com --path /ja4)
+(( ${#out} )) && mapfile -t arr <<< "$out"
 
 
 ```bash
