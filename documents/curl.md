@@ -5,7 +5,7 @@ bash ensure-packages-installed.sh curl jc jq
 
 
 
---proxy http://proxy.internal:80 --proxy-basic --config < <(printf 'proxy-user = "%s:%s"\n' $http_proxy_username $http_proxy_password )
+--proxy-basic --proxy http://proxy.internal:80 --config < <(printf 'proxy-user = "%s:%s"\n' $http_proxy_username $http_proxy_password )
 
 
 Create `Call-API.sh`
@@ -68,17 +68,6 @@ fi
 
 
 
-
-
-
-
-check if it is ip with jc --ip-address then  
-
-if not ip , lookup with getent
-
-getent ahosts example.com 1>/dev/null
-
-port being 0 - 65535
 
 
 

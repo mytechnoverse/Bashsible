@@ -1,125 +1,45 @@
 
-```bash
-bash ensure-packages-installed.sh curl jq
-```
 
-Create `ensure-debian-golang-absent.sh` : 
 
-```bash
-#!/usr/bin/bash
-set -Eeuo pipefail
-shopt -s inherit_errexit
-script_error_trap() {
-    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
-    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
+
+
+For each ( Browser , Browser Version , Platform ) combination , there are 4 variations ( JA4 Hashes ) for TLS CLientHello Message :
+
+1. Websockets use different ALPN Extension ( application_layer_protocol_negotiation ) :
+
+ALPN Values :
+
+Default   : [ "h2" , "http/1.1" ]
+GRPC      : [ "h2" , "http/1.1" ]
+Websocket : [ "http/1.1" ]
+
+2. Resumed ( Refreshed ) TLS Connections include PSK Specific Extensions ( pre_shared_key , psk_key_exchange_modes ) with stateless session tickets .
+
+
+
+
+
+
+
+server {
+    ...
+    location = /ja4 {
+        default_type application/json;
+        return 200 '{"tls": {"ja4": "$ssl_fingerprint_ja4"}}';
+    }
 }
-trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
-golang_packages=$(dpkg-query --show --showformat='${Package}\n' golang 'golang-*' 2>/dev/null || true)
-readarray -t golang_packages_list < <(printf '%s' "$golang_packages")
-(( ${#golang_packages_list[@]} )) || exit 0
-for this_package_name in "${golang_packages_list[@]}"
-do
-    if dpkg-query --show $this_package_name &>/dev/null
-    then
-        DEBIAN_FRONTEND=noninteractive apt-get --quiet --yes -o Dpkg::Use-Pty=0 purge $this_package_name
-        DEBIAN_FRONTEND=noninteractive apt-get --quiet --yes -o Dpkg::Use-Pty=0 autopurge
-    fi
-done
-```
+
+
+
+
+
+
+
+
 
 ```bash
-bash ensure-debian-golang-absent.sh
+go get github.com/sardanioss/httpcloak
 ```
-
-Create `download-golang-archive.sh` :
-
-```bash
-#!/usr/bin/bash
-set -Eeuo pipefail
-shopt -s inherit_errexit
-script_error_trap() {
-    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
-    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
-}
-trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
-command -v curl >/dev/null
-command -v jq >/dev/null
-golang_api_url='https://go.dev/dl/?mode=json'
-golang_api_response=$(curl --ipv4 --silent --show-error --fail-with-body --location --compressed --connect-timeout 1 --url $golang_api_url)
-golang_latest_stable_obj=$(jq --exit-status --compact-output 'first(.[] | select(.stable == true))' < <(printf '%s' "$golang_api_response"))
-golang_latest_stable_version=$(jq --exit-status --raw-output '.version' < <(printf '%s' "$golang_latest_stable_obj"))
-golang_latest_stable_linux_amd64_filename=$(jq --exit-status --raw-output '(.files[] | select(.os == "linux" and .arch == "amd64")).filename' < <(printf '%s' "$golang_latest_stable_obj"))
-golang_latest_stable_linux_amd64_URL="https://go.dev/dl/${golang_latest_stable_linux_amd64_filename}"
-
-
-curl --ipv4 --silent --show-error --fail-with-body --location --connect-timeout 1 --url $golang_api_url --output 
-
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-$HOME/.profile or /etc/profile :
-
-export PATH=$PATH:/usr/local/go/bin
-export PATH="$PATH:$(go env GOPATH)/bin"          ( $HOME/go/bin )
-
-source $HOME/.profile
-
-go version
-
-
-
-
-
-tar -C /usr/local -xzf go1.27.3.linux-amd64.tar.gz
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

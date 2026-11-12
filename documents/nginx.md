@@ -62,7 +62,7 @@ Signed-By: /etc/apt/keyrings/nginx-archive-keyring.pgp
 ---
 
 
-go get github.com/sardanioss/httpcloak
+
 
 nginx :
 
@@ -85,31 +85,7 @@ add the key the way that encrypted .key files were added in nginx using systemd 
 
 
 
-For each ( Browser , Browser Version , Platform ) combination , there are 4 variations ( JA4 Hashes ) for TLS CLientHello Message :
 
-1. Websockets use different ALPN Extension ( application_layer_protocol_negotiation ) :
-
-ALPN Values :
-
-Default   : [ "h2" , "http/1.1" ]
-GRPC      : [ "h2" , "http/1.1" ]
-Websocket : [ "http/1.1" ]
-
-2. Resumed ( Refreshed ) TLS Connections include PSK Specific Extensions ( pre_shared_key , psk_key_exchange_modes ) with stateless session tickets .
-
-
-
-
-
-
-
-server {
-    ...
-    location = /ja4 {
-        default_type application/json;
-        return 200 '{"tls": {"ja4": "$ssl_fingerprint_ja4"}}';
-    }
-}
 
 
 
@@ -161,13 +137,6 @@ done
 ```bash
 bash compress-files-brotli.sh /var/www/html/
 ```
-
-
-
-include safari
-add a websocket include option 
-
-
 
 
 apt-get --only-source --yes build-dep nginx !!!! dont !!!!
