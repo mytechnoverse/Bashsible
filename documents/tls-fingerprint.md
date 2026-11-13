@@ -1,8 +1,4 @@
 
-
-
-
-
 For each ( Browser , Browser Version , Platform ) combination , there are 4 variations ( JA4 Hashes ) for TLS CLientHello Message :
 
 1. Websockets use different ALPN Extension ( application_layer_protocol_negotiation ) :
@@ -37,10 +33,45 @@ server {
 
 
 
-```bash
-go get github.com/sardanioss/httpcloak
-```
 
+
+
+for _ , thisPreset := range latestPresetsList {
+
+
+}
+
+
+
+for aliasPresetName := range versionsDictionary {
+    fmt.Println(key)
+}
+
+
+
+
+
+
+
+
+
+func getAliasPresetVersion( aliasPresetName string ) error {
+    presetObject , presetDescriptionError := fingerprint.Describe( aliasPresetName )
+    if presetDescriptionError != nil { return fmt.Errorf( "error" ) }
+    var presetJSON presetSchema
+    presetSchemaError := presetObject.JSON( &presetJSON )
+    if presetSchemaError != nil { return fmt.Errorf( "error" ) }
+    if presetJSON.PRESET.NAME == "" { return fmt.Errorf( "error" ) }
+    resolvedPresetName := presetJSON.PRESET.NAME
+    presetPartsList := strings.Split( resolvedPresetName , "-" )
+    return 
+}
+
+thisPresetVersion , thisPresetVersionError := strconv.Atoi( presetPartsList[ 1 ] )
+
+
+
+--browser-version :
 
 
 
@@ -57,13 +88,27 @@ import (
     "strings"
     "strconv"
     "encoding/json"
+    "runtime/debug"
     "github.com/sardanioss/httpcloak"
 )
 const chromeMinAllowedVersion = 143
 var chromeAllowedPlatformsList = []string{ "windows" , "macos" , "android" , "ios" }
+var versionsDictionary = map[string]string{
+    "chrome-latest-android": "" ,
+    "chrome-latest-windows": "" ,
+    "chrome-latest-ios": "" ,
+    "chrome-latest-macos": "" ,
+    "safari-latest-ios": "" ,
+    "safari-latest": ""
+}
 type endpointSchema struct {
     TLS struct {
         JA4 string
+    }
+}
+type presetSchema struct {
+    PRESET struct {
+        NAME string
     }
 }
 var fingerprintsDictionary = make( map[string]string )
@@ -71,14 +116,14 @@ var fingerprintsList []string
 func getSessionFingerprint( sessionObj *httpcloak.Session , endpointURL string ) error {
     requestContext , requestCancel := context.WithTimeout( context.Background() , 1 * time.Second )
     defer requestCancel()
-    ResponseObj , requestError := sessionObj.Get( requestContext , endpointURL )
+    responseObj , requestError := sessionObj.Get( requestContext , endpointURL )
     if requestError != nil { return fmt.Errorf( "%w" , requestError ) }
-    defer ResponseObj.Close()
-    var ResponseJSON endpointSchema
-    ResponseSchemaError := ResponseObj.JSON( &ResponseJSON )
-    if ResponseSchemaError != nil { return fmt.Errorf( "error" ) }
-    if ResponseJSON.TLS.JA4 == "" { return fmt.Errorf( "error" ) }
-    sessionFingerprint := ResponseJSON.TLS.JA4
+    defer responseObj.Close()
+    var responseJSON endpointSchema
+    responseSchemaError := responseObj.JSON( &responseJSON )
+    if responseSchemaError != nil { return fmt.Errorf( "error" ) }
+    if responseJSON.TLS.JA4 == "" { return fmt.Errorf( "error" ) }
+    sessionFingerprint := responseJSON.TLS.JA4
     _ , ok := fingerprintsDictionary[ sessionFingerprint ]
     if !ok {
         fingerprintsDictionary[ sessionFingerprint ] = ""
@@ -125,11 +170,7 @@ func getPresetFingerprint( presetName string , endpointURL string , withWebsocke
     return nil
 }
 func applicationMain( endpointDomain string , endpointPath string , withWebsockets bool ) error {
-    if net.ParseIP( endpointDomain ) != nil { return fmt.Errorf( "error" ) }
-    dnsLookupContext , dnsLookupCancel := context.WithTimeout( context.Background() , 1 * time.Second )
-    defer dnsLookupCancel()
-    _ , dnsLookupError := net.DefaultResolver.LookupIP( dnsLookupContext , "ip4" , endpointDomain )
-    if dnsLookupError != nil { return fmt.Errorf( "%w" , dnsLookupError ) }
+    if net.ParseIP( endpointDomain ) == nil { return fmt.Errorf( "error" ) }
     endpointURL := "https://" + endpointDomain + endpointPath
     presetsList := httpcloak.Presets()
     var targetPresetsList []string
@@ -162,11 +203,37 @@ func applicationMain( endpointDomain string , endpointPath string , withWebsocke
     }
     return nil
 }
+func getVersion() error {
+    buildInfo , ok := debug.ReadBuildInfo()
+    if !ok { return fmt.Errorf( "error" ) }
+    for _ , thisDependency := range buildInfo.Deps {
+        if thisDependency.Path == "github.com/sardanioss/httpcloak" {
+                fmt.Fprintln( os.Stdout , thisDependency.Version )
+                break
+            }
+        }
+}
 func main() {
+    printVersion := flag.Bool( "version" , false , "" )
     endpointDomain := flag.String( "domain" , "" , "" )
     endpointPath := flag.String( "path" , "" , "" )
     withWebsockets := flag.Bool( "with-websockets" , false , "" )
     flag.Parse()
+    var applicationOutputList []string
+    var applicationError error
+    if printVersion == true {
+        
+        if !ok {
+            os.Exit( 1 )
+        }
+        for _ , thisDependency := range buildInfo.Deps {
+            if thisDependency.Path == "github.com/sardanioss/httpcloak" {
+                fmt.Fprintln( os.Stdout , thisDependency.Version )
+                break
+            }
+        }
+        os.Exit( 0 )
+    }
     requiredArgumentsList := []string{ *endpointDomain , *endpointPath }
     requiredArgumentsCount := len( requiredArgumentsList )
     for requiredArgumentsIndex := 0 ; requiredArgumentsIndex < requiredArgumentsCount ; requiredArgumentsIndex++ {
@@ -183,8 +250,8 @@ func main() {
         fmt.Fprintf( os.Stderr , "Error : %v\n" , applicationError )
         os.Exit( 1 )
     }
-    for _ , outputLine := range fingerprintsList { fmt.Fprintln( os.Stdout , outputLine ) }
+    applicationOutputList = fingerprintsList
+    for _ , outputLine := range applicationOutputList { fmt.Fprintln( os.Stdout , outputLine ) }
 }
 ```
-
 
