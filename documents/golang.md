@@ -72,12 +72,115 @@ curl --ipv4 --silent --show-error --fail-with-body --location --connect-timeout 
 
 
 
+local command_temp_fd command_stderr 
+
+
+run_silently() {
+    (( $# > 0 ))
+
+    local captured rc=0 saved_out
+    exec {saved_out}>&1
+
+    # stderr -> pipe (captured); stdout -> caller's stdout.
+    # `trap - ERR` keeps the inherited ERR trap from polluting the capture.
+    # `|| rc=$?` exempts the assignment from errexit and from the caller's ERR trap.
+    captured=$( trap - ERR; "$@" 2>&1 1>&"$saved_out" ) || rc=$?
+
+    exec {saved_out}>&-
+
+    if (( rc != 0 )); then
+        [[ -z $captured ]] || printf '%s\n' "$captured" >&2
+        return "$rc"
+    fi
+    # success: `captured` is discarded — never printed, never persisted
+}
 
 
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+exec {saved_out}>&1
+captured=$( trap - ERR; "$@" 2>&1 1>&"$saved_out" )
+exec {saved_out}>&-
+
+
+
+silent_stderr() {
+    (( $# > 0 ))
+    command_stderr_path=$(mktemp)
+    if "$@" 2> $command_stderr_path
+    then
+        rm $command_stderr_path
+    else
+        command_return_code=$?
+        cat $command_stderr_path >&2
+        rm $command_stderr_path
+        return $command_return_code
+    fi
+}
+
+
+
+
+
+
+
+# Runs a command, suppressing its normal stderr output.
+# If the command fails, it prints the captured stderr and returns the exit code.
+run_quietly() {
+    local err_file
+    err_file=$(mktemp)
+    # Execute the command, redirecting its stderr to a temp file.
+    # stdout (if any) is left untouched.
+    if ! "$@" 2>"$err_file"; then
+        # The command failed. Print the captured error output.
+        cat "$err_file" >&2
+        rm -f "$err_file"
+        return 1
+    fi
+    # The command succeeded. Discard the normal stderr output.
+    rm -f "$err_file"
+    return 0
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+return a template config file with --default-config
+
+read from a config file
+
+create a json file at build time , make the app read it and return it with --build
 
 
 
