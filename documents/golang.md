@@ -162,11 +162,16 @@ run_quietly() {
 
 
 
+go vet -fix 
+
+
+
+go env GOTELEMETRY , GOTELEMETRYDIR 
 
 
 
 
-
+go telemetry off
 
 
 
@@ -264,25 +269,23 @@ jq --null-input --monochrome-output --arg app_name $app_name --arg app_version $
 
 
 
+Golang Local Mirror : Athens
 
-write a golang app that adds the username and password header to golang http proxy request
+https://github.com/gomods/athens
+module caching , checksum proxying
 
+setting http proxy for internet access in athens :
 
-
-
-
-
-
-
-
-
-printf 'user:pass' | base64
+HTTP_PROXY='http://http-proxy.internal:8080'
 
 
 
 
+setting local mirror in client :
 
+/etc/golang/env :
 
+GOPROXY=http://golang-proxy.internal/golang
 
 
 
@@ -296,6 +299,42 @@ printf 'user:pass' | base64
 
 
 
+ 
+
+
+
+Create `Disable-Golang-Telemetry.sh` :
+
+```bash
+#!/usr/bin/bash
+set -Eeuo pipefail
+shopt -s inherit_errexit
+script_error_trap() {
+    local script_exit_code=$1 script_line_number=$2 script_bash_command=$3
+    printf 'Error : Line %s : %s [ %s ]\n' $script_line_number "$script_bash_command" $script_exit_code >&2
+}
+trap 'script_error_trap $? $LINENO "$BASH_COMMAND"' ERR
+user_name=$1
+user_entry=$(getent --service files passwd $user_name)
+IFS=: read -r _ _ user_id user_group_id _ user_home_path _ < <(printf '%s\n' $user_entry)
+[[ -d $user_home_path ]]
+directory_default_mode='755'
+config_file_default_mode='644'
+user_config_prefix="${user_home_path}/.config"
+user_config_golang_prefix="${user_config_prefix}/go"
+user_config_golang_telemetry_prefix="${user_config_golang_prefix}/telemetry"
+user_config_golang_telemetry_path="${user_config_golang_telemetry_prefix}/mode"
+install --owner=$user_id --group=$user_group_id --mode=$directory_default_mode --directory $user_config_prefix
+install --owner=$user_id --group=$user_group_id --mode=$directory_default_mode --directory $user_config_golang_prefix
+install --owner=$user_id --group=$user_group_id --mode=$directory_default_mode --directory $user_config_golang_telemetry_prefix
+
+
+
+
+
+[[ -f $user_config_golang_telemetry_path ]] || touch $user_config_golang_telemetry_path
+[[ $(stat -c '%U:%G' $user_config_golang_telemetry_path) == "${user_id} ${user_group_id}" ]] || chown root:root $user_config_golang_telemetry_path
+[[ $(stat -c '%a' $user_config_golang_telemetry_path) == $config_file_default_mode ]] || chmod $config_file_default_mode $user_config_golang_telemetry_path
 
 
 
@@ -303,39 +342,92 @@ printf 'user:pass' | base64
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+printf "%s\n" 'off' > $user_config_golang_telemetry_path
+```
 
 
 ```bash
-mkdir -p /root/.config/go
+Disable-Golang-Telemetry.sh --user root
 ```
 
-Create `/root/.config/go/env` :
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Create `/usr/lib/tmpfiles.d/golang.conf` :
+
+```text
+d /var/tmp/golang 1777 root root
+```
+
+Create `/usr/lib/go/go.env` :
 
 ```ini
 CGO_ENABLED=0
+GOTMPDIR=/var/tmp/golang/
+GOTOOLCHAIN=local
 GOPROXY=https://proxy.golang.org
 GOSUMDB=sum.golang.org
-GOTOOLCHAIN=local
-GOPRIVATE=""
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Proxy-Authorization header
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

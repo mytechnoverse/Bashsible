@@ -154,5 +154,58 @@ snmpwalk -r 1 -v3 -l noAuthNoPriv -u snmp_user_name udp:snmp_agent_ip .1
 
 
 
+1 : ok
+0 : error
+
+Create `/usr/local/bin/check_nfs_mount.sh` :
+
+#!/bin/bash
+mount_path='/mnt/local_mount_point'
+if timeout 5s ls -1f $mount_path &>/dev/null
+then
+    echo '1'
+else
+    echo '0'
+fi
+
+chmod 755 /usr/local/bin/check_nfs_mount.sh
+
+/etc/snmp/snmpd.conf :
+
+skipNFSInHostResources yes
+extend nfs_mount_check /usr/local/bin/check_nfs_mount.sh
+
+systemctl restart snmpd
+
+
+Zabbix :
+
+--- snmp item :
+
+Type: SNMP agent
+Key : nfs.mount.status
+SNMP OID : .1.3.6.1.4.1.8072.1.3.2.4.1.2.11.110.102.115.95.109.111.117.110.116.95.99.104.101.99.107
+Type : Numeric (unsigned)
+
+--- snmp trigger :
+
+Expression: {nfs_client_ip:snmp.nfs.mount.status.last()} = 0
+Severity : High
+
+
+Prefix + character length + ( nfs_mount_check ) in ASCII decimal 
+
+.1.3.6.1.4.1.8072.1.3.2.4.1.2
+
+
+
+
+
+
+
+
+
+
+
 
 
