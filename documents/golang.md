@@ -166,12 +166,6 @@ go vet -fix
 
 
 
-go env GOTELEMETRY , GOTELEMETRYDIR 
-
-
-
-
-go telemetry off
 
 
 
@@ -327,24 +321,15 @@ user_config_golang_telemetry_path="${user_config_golang_telemetry_prefix}/mode"
 install --owner=$user_id --group=$user_group_id --mode=$directory_default_mode --directory $user_config_prefix
 install --owner=$user_id --group=$user_group_id --mode=$directory_default_mode --directory $user_config_golang_prefix
 install --owner=$user_id --group=$user_group_id --mode=$directory_default_mode --directory $user_config_golang_telemetry_prefix
-
-
-
-
-
 [[ -f $user_config_golang_telemetry_path ]] || touch $user_config_golang_telemetry_path
-[[ $(stat -c '%U:%G' $user_config_golang_telemetry_path) == "${user_id} ${user_group_id}" ]] || chown root:root $user_config_golang_telemetry_path
-[[ $(stat -c '%a' $user_config_golang_telemetry_path) == $config_file_default_mode ]] || chmod $config_file_default_mode $user_config_golang_telemetry_path
-
-
-
-
-
-
-
+telemetry_file_owner_user_id=$(stat --format='%u' $user_config_golang_telemetry_path)
+(( telemetry_file_owner_user_id == user_id )) || chown $user_id $user_config_golang_telemetry_path
+telemetry_file_owner_group_id=$(stat --format='%g' $user_config_golang_telemetry_path)
+(( telemetry_file_owner_group_id == user_id )) || chgrp $user_group_id $user_config_golang_telemetry_path
+telemetry_file_mode=$(stat --format='%a' $user_config_golang_telemetry_path)
+[[ $telemetry_file_mode == $config_file_default_mode ]] || chmod $config_file_default_mode $user_config_golang_telemetry_path
 printf "%s\n" 'off' > $user_config_golang_telemetry_path
 ```
-
 
 ```bash
 Disable-Golang-Telemetry.sh --user root
