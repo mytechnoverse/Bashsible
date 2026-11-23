@@ -8,49 +8,37 @@ set -o pipefail
 shopt -s inherit_errexit
 
 bashsible_bash_error_trap() {
-    (( $# == 3 ))
+    (( $# == 2 ))
 	local -i bash_error_code=$1
-	local -i bash_error_line=$2
-	local bash_error_command=$3
+	local bash_error_command=$2
 	local bash_error_message
-    local -i bash_functions_nest_levels
-    local -i bash_function_index
-    local bash_this_function_name
-	local bash_this_source_name
-	local -i bash_this_source_line_number
+    local -i bash_error_functions_count=${#FUNCNAME[@]}
+    local -i bash_error_function_index
 	read -r -d $'\x1c' bash_error_message <<-EOF
 	
 	Bashsible Error Message :
 	
 	Error Code : $bash_error_code
-	Line Number : $bash_error_line
 	Bash Command : $bash_error_command
+    
+    Function Hierarchy :
 	$(printf '\x1c')
 	EOF
-	bash_functions_nest_levels=${#FUNCNAME[@]}
-	(( bash_functions_nest_levels < 3 )) || {
-        bash_error_message+=$'\n\n'
-		bash_error_message+="Function Hierarchy :"
-		bash_error_message+=$'\n\n'
-		for (( bash_function_index = 1 ; bash_function_index < bash_functions_nest_levels - 1 ; bash_function_index++ ))
-		do
-			bash_this_function_name=${FUNCNAME[$bash_function_index]}
-			bash_this_source_name=${BASH_SOURCE[$bash_function_index]}
-			bash_this_source_line_number=${BASH_LINENO[$bash_function_index - 1 ]}
-			bash_error_message+="${bash_this_function_name} [ ${bash_this_source_name} : ${bash_this_source_line_number} ]"
-			bash_error_message+=$'\n'
-		done
-	}
+    bash_error_message+=$'\n\n'
+    for (( bash_error_function_index = 1 ; bash_error_function_index < bash_error_functions_count ; bash_error_function_index++ ))
+    do
+        local bash_error_this_function_name=${FUNCNAME[$bash_error_function_index]:-main}
+        local bash_error_this_source_name=${BASH_SOURCE[$bash_error_function_index]:-main}
+        local -i bash_error_this_source_line_number=${BASH_LINENO[$bash_error_function_index - 1 ]}
+        bash_error_message+="${bash_error_this_function_name} [ ${bash_error_this_source_name} : ${bash_error_this_source_line_number} ]"
+        bash_error_message+=$'\n'
+    done
 	printf '%s\n' "$bash_error_message" >&2
 }
 
-trap 'bashsible_bash_error_trap $? $LINENO "$BASH_COMMAND"' ERR
+trap 'bashsible_bash_error_trap $? "$BASH_COMMAND"' ERR
 
 trap 'bashsible_bash_exit_trap' EXIT
-
-
-
-bashsible_bash_silent_error() on success ...
 
 bashsible_bash_is_function_defined() {
     (( $# == 1 ))
@@ -67,7 +55,7 @@ bashsible_bash_is_variable_defined() {
 bashsible_bash_undefine_variable() {
     (( $# == 1 ))
     local bash_variable_name=$1
-    unset $bash_variable_name
+    unset -v $bash_variable_name
 }
 
 bashsible_bash_undefine_variable_reference() {
@@ -97,7 +85,7 @@ bashsible_bash_is_variable_type_reference() {
     (( $# == 1 ))
     local bash_variable_name=$1
     local bash_variable_definition
-    bashsible_bash_get_variable_definition $bash_variable_name $bash_variable_definition
+    bashsible_bash_get_variable_definition $bash_variable_name bash_variable_definition
     [[ $bash_variable_definition == *n* ]]
 }
 
@@ -142,299 +130,107 @@ bashsible_bash_get_list_length() {
     bash_list_length_ref=${#bash_list_ref[@]}
 }
 
-bashsible_bash_is_dictionary_key_present() {
+bashsible_bash_is_dictionary_key_defined() {
     (( $# == 2 ))
     local bash_dictionary_name=$1
     local bash_dictionary_key=$2
     bashsible_bash_is_variable_type_dictionary $bash_dictionary_name
-    [[ -v bash_dictionary_name[$bash_dictionary_key] ]]
+    [[ -v $bash_dictionary_name[$bash_dictionary_key] ]]
 }
-
-
-
-
-
-
-bashsible_bash_is_dictionary_key_present 
-
-bashsible_bash_is_variable_type_list 
-
-
-
-
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
 
 bashsible_bash_get_cli_options() {
     (( $# >= 3 ))
-    local -a bash_cli_arguments_list
-    local -i bash_cli_argument_index
+    local -a bash_cli_arguments_list=("$@")
+    local -i bash_cli_argument_index=0
     local -i bash_cli_arguments_count
     local -A bash_value_options_dictionary
     local -A bash_switch_options_dictionary
     local -A bash_list_options_dictionary
-    local bash_this_variable_name
-    local bash_this_variable_option
-    local bash_this_option
-
-    bash_cli_arguments_list=("$@")
-    bashsible_bash_argument_index=0
     bashsible_bash_get_list_length bash_cli_arguments_list bash_cli_arguments_count
-
     while (( bash_cli_argument_index < bash_cli_arguments_count )) && [[ ${bash_cli_arguments_list[$bash_cli_argument_index]} != -- ]]
     do
-        bash_this_variable_name=${bash_cli_arguments_list[$bash_cli_argument_index]}
+        local bash_this_variable_name=${bash_cli_arguments_list[$bash_cli_argument_index]}
+        local bash_this_variable_option="--${bash_this_variable_name//_/-}"
         bash_cli_argument_index=$(( bash_cli_argument_index + 1 ))
-
-
-
-        ....
-
-
-        bashsible_bash_is_variable_type_readonly bash_this_variable_name
-
-        shift
-        bash_this_variable_option="--${bash_this_variable_name//_/-}"
-        [[ ! $script_this_variable_attributes == *a* ]] || {
+        ! bashsible_bash_is_variable_type_readonly $bash_this_variable_name || false
+        ! bashsible_bash_is_variable_type_list $bash_this_variable_name || {
             bash_list_options_dictionary[$bash_this_variable_option]=$bash_this_variable_name
             continue
         }
-        local -n script_this_variable_value=$bash_this_variable_name
-        [[ ! $script_this_variable_value == '' ]] || {
+        local -n bash_this_variable_ref=$bash_this_variable_name
+        [[ ! $bash_this_variable_ref == '' ]] || {
             bash_value_options_dictionary[$bash_this_variable_option]=$bash_this_variable_name
-            unset -n script_this_variable_value
+            bashsible_bash_undefine_variable_reference bash_this_variable_ref
             continue
         }
-        [[ ! $script_this_variable_value == 0 ]] || {
+        [[ ! $bash_this_variable_ref == 0 ]] || {
             bash_switch_options_dictionary[$bash_this_variable_option]=$bash_this_variable_name
-            unset -n script_this_variable_value
+            bashsible_bash_undefine_variable_reference bash_this_variable_ref
             continue
         }
-        return 1
+        false
     done
-    if (( ! $# )) || [[ $1 != -- ]]
-    then
-        return 1
-    fi
-    shift
-    while (( $# ))
+    (( bash_cli_argument_index < bash_cli_arguments_count ))
+    [[ ${bash_cli_arguments_list[$bash_cli_argument_index]} == -- ]]
+    bash_cli_argument_index=$(( bash_cli_argument_index + 1 ))
+    while (( bash_cli_argument_index < bash_cli_arguments_count ))
     do
-        bash_this_option=$1
-        [[ ! -v "script_value_options_dictionary[$bash_this_option]" ]] || {
-            if (( $# < 2 )) || [[ $2 == --* ]]
-            then
-                return 1
-            fi
-            printf -v "${script_value_options_dictionary[$bash_this_option]}" '%s' $2
-            shift 2
+        local bash_this_script_option=${bash_cli_arguments_list[$bash_cli_argument_index]}
+        ! bashsible_bash_is_dictionary_key_defined bash_value_options_dictionary $bash_this_script_option || {
+            local -n bash_this_variable_ref=${bash_value_options_dictionary[$bash_this_script_option]}
+            local -i bash_this_script_option_value_index=$(( bash_cli_argument_index + 1 ))
+            (( bash_this_script_option_value_index < bash_cli_arguments_count ))
+            local bash_this_script_option_value="${bash_cli_arguments_list[$bash_this_script_option_value_index]}"
+            [[ $bash_this_script_option_value != --* ]]
+            bash_this_variable_ref=$bash_this_script_option_value
+            bashsible_bash_undefine_variable_reference bash_this_variable_ref
+            bash_cli_argument_index=$(( bash_cli_argument_index + 2 ))
             continue
         }
-        [[ ! -v "script_switch_options_dictionary[$bash_this_option]" ]] || {
-            printf -v "${script_switch_options_dictionary[$bash_this_option]}" '%s' '1'
-            shift
+        ! bashsible_bash_is_dictionary_key_defined bash_switch_options_dictionary $bash_this_script_option || {
+            local -n bash_this_variable_ref=${bash_switch_options_dictionary[$bash_this_script_option]}
+            bash_this_variable_ref=1
+            bashsible_bash_undefine_variable_reference bash_this_variable_ref
+            bash_cli_argument_index=$(( bash_cli_argument_index + 1 ))
             continue
         }
-        [[ ! -v "script_list_options_dictionary[$bash_this_option]" ]] || {
-            local -n script_list_variable_ref=${script_list_options_dictionary[$bash_this_option]}
-            shift
-            while (( $# )) && [[ $1 != --* ]]
+        ! bashsible_bash_is_dictionary_key_defined bash_list_options_dictionary $bash_this_script_option || {
+            local -n bash_this_variable_ref=${bash_list_options_dictionary[$bash_this_script_option]}
+            bash_cli_argument_index=$(( bash_cli_argument_index + 1 ))
+            while (( bash_cli_argument_index < bash_cli_arguments_count )) && [[ ${bash_cli_arguments_list[$bash_cli_argument_index]} != --* ]]
             do
-                script_list_variable_ref+=( $1 )
-                shift
+                bash_this_variable_ref+=( "${bash_cli_arguments_list[$bash_cli_argument_index]}" )
+                bash_cli_argument_index=$(( bash_cli_argument_index + 1 ))
             done
-            unset -n script_list_variable_ref
+            bashsible_bash_undefine_variable_reference bash_this_variable_ref
             continue
         }
-        return 1
+        false
     done
 }
-
-
--------------------------------
-
-
-
-bashsible_bash_get_cli_options() {
-    local -a bash_this_arguments=("$@")
-    local -i bash_this_index=0
-    local -i bash_this_count=${#bash_this_arguments[@]}
-    local -A bash_value_options_dictionary
-    local -A bash_switch_options_dictionary
-    local -A bash_list_options_dictionary
-    local bash_this_variable_name
-    local bash_this_variable_option
-    local bash_this_variable_declaration
-    local bash_this_variable_attributes
-    local bash_this_option
-
-    (( bash_this_count >= 3 )) || return 1
-
-    # Phase 1: collect variable names up to the literal --
-    while (( bash_this_index < bash_this_count )) \
-        && [[ ${bash_this_arguments[$bash_this_index]} != -- ]]
-    do
-        bash_this_variable_name=${bash_this_arguments[$bash_this_index]}
-        bash_this_index=$(( bash_this_index + 1 ))
-
-        bash_this_variable_declaration=$(declare -p "$bash_this_variable_name" 2>/dev/null) || return 1
-        bash_this_variable_attributes=${bash_this_variable_declaration#declare -}
-        bash_this_variable_attributes=${bash_this_variable_attributes%% *}
-        bash_this_variable_option="--${bash_this_variable_name//_/-}"
-
-        if [[ $bash_this_variable_attributes == *a* ]]; then
-            bash_list_options_dictionary[$bash_this_variable_option]=$bash_this_variable_name
-            continue
-        fi
-        if [[ $bash_this_variable_attributes == *A* ]]; then
-            return 1
-        fi
-
-        local -n bash_this_variable_value=$bash_this_variable_name
-        if [[ ${bash_this_variable_value-} == '' ]]; then
-            bash_value_options_dictionary[$bash_this_variable_option]=$bash_this_variable_name
-            unset -n bash_this_variable_value
-            continue
-        fi
-        if [[ ${bash_this_variable_value-} == 0 ]]; then
-            bash_switch_options_dictionary[$bash_this_variable_option]=$bash_this_variable_name
-            unset -n bash_this_variable_value
-            continue
-        fi
-        unset -n bash_this_variable_value
-        return 1
-    done
-
-    if (( bash_this_index >= bash_this_count )) \
-        || [[ ${bash_this_arguments[$bash_this_index]} != -- ]]
-    then
-        return 1
-    fi
-    bash_this_index=$(( bash_this_index + 1 ))
-
-    # Phase 2: parse the CLI arguments
-    while (( bash_this_index < bash_this_count ))
-    do
-        bash_this_option=${bash_this_arguments[$bash_this_index]}
-
-        if [[ -v "bash_value_options_dictionary[$bash_this_option]" ]]; then
-            (( bash_this_index + 1 < bash_this_count )) || return 1
-            [[ ${bash_this_arguments[$(( bash_this_index + 1 ))]} != --* ]] || return 1
-            printf -v "${bash_value_options_dictionary[$bash_this_option]}" '%s' \
-                "${bash_this_arguments[$(( bash_this_index + 1 ))]}"
-            bash_this_index=$(( bash_this_index + 2 ))
-            continue
-        fi
-
-        if [[ -v "bash_switch_options_dictionary[$bash_this_option]" ]]; then
-            printf -v "${bash_switch_options_dictionary[$bash_this_option]}" '%s' '1'
-            bash_this_index=$(( bash_this_index + 1 ))
-            continue
-        fi
-
-        if [[ -v "bash_list_options_dictionary[$bash_this_option]" ]]; then
-            local -n bash_list_variable_ref=${bash_list_options_dictionary[$bash_this_option]}
-            bash_this_index=$(( bash_this_index + 1 ))
-            while (( bash_this_index < bash_this_count )) \
-                && [[ ${bash_this_arguments[$bash_this_index]} != --* ]]
-            do
-                bash_list_variable_ref+=( "${bash_this_arguments[$bash_this_index]}" )
-                bash_this_index=$(( bash_this_index + 1 ))
-            done
-            unset -n bash_list_variable_ref
-            continue
-        fi
-        return 1
-    done
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-script_this_variable_attributes=${script_this_variable_declaration#declare -}
-script_this_variable_attributes=${script_this_variable_attributes%% *}
-local script_this_variable_attributes
-local script_this_variable_declaration
-
-
-
-
-
-
-when checking , use || return 0 ????
-
-
 
 
 
 
 
 : <<'COMMENT'
+
+
+
+bashsible_bash_silent_error() on success ...
+
+
+
+
 #!/usr/bin/bash
-source sources/bash.bash
-bashsible_bash_exit_trap() {:}
+source bashsible/sources/bash.bash
+bashsible_bash_exit_trap() {:;}
 
 user_name=''
 groups=()
 with_option=0
 
-script_cli_parser user_name groups with_option -- "$@"
+bashsible_bash_get_cli_options user_name groups with_option -- "$@"
 
 [[ -n $user_name ]]
 (( ${#groups[@]} > 0 ))
@@ -442,20 +238,8 @@ script_cli_parser user_name groups with_option -- "$@"
 
 use bashsible_ prefix for bashsible variables and functions
 use local for every function variable
-unset -n for every nameref after use
-
-
+unset -n for every nameref after use inside a loop
+running other scripts from this script : bashsible/scripts/script-name  
 COMMENT
-
-
-
-
-
-
-
-
-???????????
-
-
 
 
