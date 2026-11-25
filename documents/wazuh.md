@@ -1,4 +1,112 @@
 
+
+
+https://mitre-attack.github.io/attack-navigator/
+https://attack.mitre.org/docs/attack_matrix_poster_2024_april.pdf
+
+
+
+
+Mitre Attack :
+
+Tactic : Why
+Technique : How
+
+
+https://documentation.wazuh.com/current/user-manual/ruleset/index.html
+
+
+https://documentation.wazuh.com/current/user-manual/reference/daemons/index.html
+
+
+Required Modules :
+
+wazuh-reportd
+wazuh-monitord ( compression only )
+wazuh-remoted
+wazuh-analysisd
+wazuh-db
+wazuh-apid
+
+
+
+
+
+
+
+custom decoder :
+
+/var/ossec/etc/decoders/local_decoder.xml
+
+custom rules :
+
+/var/ossec/etc/rules/local_rules.xml
+
+
+
+
+
+
+interactive regex test ( OSRegex ) :
+does not support PCRE2  ( <regex type="pcre2"> )
+
+/var/ossec/bin/wazuh-regex 'regex_value'
+
+interactive log decoder test :
+
+/var/ossec/bin/wazuh-logtest
+
+
+
+apply decoders :
+
+systemctl restart wazuh-manager.service
+
+
+
+
+
+
+
+
+du -h --max-depth=1 --exclude=/sys --exclude=/dev --exclude=/proc --exclude=/run /
+
+wazuh log storage path : /var/lib/wazuh-indexer/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+wazuh manager wazuh-keystore :
+
+/var/ossec/bin/wazuh-keystore -f indexer -k username -v admin
+
+secure password supply :
+
+1.
+echo 'admin' | /var/ossec/bin/wazuh-keystore -f indexer -k password
+2.
+/var/ossec/bin/wazuh-keystore -f indexer -k password < <(printf '%s' "admin")
+3.
+/var/ossec/bin/wazuh-keystore -f indexer -k password -vp <(printf '%s' "admin")
+
+
+
+
+
+
+
+
 - <https://packages.wazuh.com/key/GPG-KEY-WAZUH>
 
 Create `/etc/sysctl.d/60-loopback-dnat.conf` :
