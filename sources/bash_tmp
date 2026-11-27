@@ -3,17 +3,6 @@
 
 : <<'COMMENT'
 
-
-
-
-shellcheck -a ( --check-sourced ) for its rc file 
--S warning ??
-
-SC2310
-SC2311
-SC2155
-SC2154
-
 user_name=''
 declare -i with_option=0
 declare -a groups=()
@@ -157,8 +146,6 @@ for this_index in {1..10}
 do
 done
 
-bash::check_bash_syntax : bash -n
-
 bash::print_line : printf '%s\n'
 bash::read_text : read 1c
 bash::read_lines readarray
@@ -167,9 +154,6 @@ bash::get_line_props line prop1 prop1 -----> print_line | read -d \n _ _ _
 bash::ensure
 bash::prompt
 bash::prompt_secret
-
-bash -n ???
-bash -O shopt_option ??
 
 validate values :
 @(pattern-list)

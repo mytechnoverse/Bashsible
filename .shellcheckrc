@@ -1,4 +1,6 @@
 external-sources=true
 source-path=SCRIPTDIR
 disable=SC2034
-enable=check-set-e-suppressed
+enable=check-unassigned-uppercase
+enable=check-extra-masked-returns
+enable=require-double-brackets

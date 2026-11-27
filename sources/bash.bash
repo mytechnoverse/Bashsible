@@ -1,4 +1,5 @@
 #!/usr/bin/bash
+
 set -o errtrace
 set -o errexit
 set -o nounset
