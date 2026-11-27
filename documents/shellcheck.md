@@ -8,6 +8,7 @@
 
 ```bash
 apt install shellcheck
+shellcheck --version
 ```
 
 Exceptions :
@@ -25,6 +26,9 @@ shellcheck -e SC2059 script_name
 
 #!/bin/sh
 # shellcheck disable=all
+
+
+# shellcheck disable=SC2034
 
 # shellcheck disable=SC2086
 

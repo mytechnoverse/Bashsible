@@ -1,4 +1,5 @@
 #!/usr/bin/bash
+# shellcheck disable=SC2034
 set -o errtrace
 set -o errexit
 set -o nounset
@@ -88,25 +89,25 @@ bash::run_capture_stdout() {
 bash::is_func_def() {
 	(( $# == 1 ))
 	local bash_function_name=$1
-	declare -F "$bash_function_name &>/dev/null
+	declare -F "$bash_function_name" &>/dev/null
 }
 
 bash::is_var_def() {
 	(( $# == 1 ))
 	local bash_var_name=$1
-	declare -p $bash_var_name &>/dev/null
+	declare -p "$bash_var_name" &>/dev/null
 }
 
 bash::undef_var() {
 	(( $# == 1 ))
 	local bash_var_name=$1
-	unset -v $bash_var_name
+	unset -v "$bash_var_name"
 }
 
 bash::undef_var_ref() {
 	(( $# == 1 ))
 	local bash_var_ref=$1
-	unset -n $bash_var_ref
+	unset -n "$bash_var_ref"
 }
 
 bash::get_var_def() {
@@ -114,8 +115,8 @@ bash::get_var_def() {
 	local bash_var_name=$1
 	local -n bash_var_def_ref=$2
 	local bash_var_declaration
-	bash::is_var_def $bash_var_name
-	bash_var_declaration=$(declare -p $bash_var_name)
+	bash::is_var_def "$bash_var_name"
+	bash_var_declaration=$(declare -p "$bash_var_name")
 	read -r _ bash_var_def_ref _ < <(printf '%s\n' "$bash_var_declaration")
 }
 
@@ -123,7 +124,7 @@ bash::is_var_type_ref() {
 	(( $# == 1 ))
 	local bash_var_name=$1
 	local bash_var_def
-	bash::get_var_def $bash_var_name bash_var_def
+	bash::get_var_def "$bash_var_name" bash_var_def
 	[[ $bash_var_def == *n* ]]
 }
 
@@ -131,7 +132,7 @@ bash::is_var_type_readonly() {
 	(( $# == 1 ))
 	local bash_var_name=$1
 	local bash_var_def
-	bash::get_var_def $bash_var_name bash_var_def
+	bash::get_var_def "$bash_var_name" bash_var_def
 	[[ $bash_var_def == *r* ]]
 }
 
@@ -139,7 +140,7 @@ bash::is_var_type_int() {
 	(( $# == 1 ))
 	local bash_var_name=$1
 	local bash_var_def
-	bash::get_var_def $bash_var_name bash_var_def
+	bash::get_var_def "$bash_var_name" bash_var_def
 	[[ $bash_var_def == *i* ]]
 }
 
@@ -147,7 +148,7 @@ bash::is_var_type_list() {
 	(( $# == 1 ))
 	local bash_var_name=$1
 	local bash_var_def
-	bash::get_var_def $bash_var_name bash_var_def
+	bash::get_var_def "$bash_var_name" bash_var_def
 	[[ $bash_var_def == *a* ]]
 }
 
@@ -155,7 +156,7 @@ bash::is_var_type_dict() {
 	(( $# == 1 ))
 	local bash_var_name=$1
 	local bash_var_def
-	bash::get_var_def $bash_var_name bash_var_def
+	bash::get_var_def "$bash_var_name" bash_var_def
 	[[ $bash_var_def == *A* ]]
 }
 
@@ -164,18 +165,18 @@ bash::get_list_len() {
 	local bash_list_name=$1
 	local -n bash_list_len_ref=$2
 	local -n bash_list_ref=$bash_list_name
-	bash::is_var_type_list $bash_list_name
+	bash::is_var_type_list "$bash_list_name"
 	bash_list_len_ref=${#bash_list_ref[@]}
 }
 
 bash::is_var_ass() {
 	(( $# == 1 ))
 	local bash_var_name=$1
-	bash::is_var_def $bash_var_name
-	if bash::is_var_type_list $bash_var_name || bash::is_var_type_dict $bash_var_name
+	bash::is_var_def "$bash_var_name"
+	if bash::is_var_type_list "$bash_var_name" || bash::is_var_type_dict "$bash_var_name"
 	then
 		local -i bash_var_len
-		bash::get_list_len $bash_var_name bash_var_len
+		bash::get_list_len "$bash_var_name" bash_var_len
 		(( bash_var_len ))
 	else
 		local -n bash_var_ref=$bash_var_name
@@ -187,8 +188,8 @@ bash::is_dict_key_def() {
 	(( $# == 2 ))
 	local bash_dict_name=$1
 	local bash_dict_key=$2
-	bash::is_var_type_dict $bash_dict_name
-	[[ -v $bash_dict_name[$bash_dict_key] ]]
+	bash::is_var_type_dict "$bash_dict_name"
+	[[ -v ${bash_dict_name[$bash_dict_key]} ]]
 }
 
 bash::get_script_opts() {
@@ -205,19 +206,19 @@ bash::get_script_opts() {
 		local bash_this_var_name=${bash_arg_list[$bash_arg_index]}
 		local bash_this_var_option="--${bash_this_var_name//_/-}"
 		bash_arg_index=$(( bash_arg_index + 1 ))
-		if bash::is_var_type_readonly $bash_this_var_name || bash::is_var_type_dict $bash_this_var_name
+		if bash::is_var_type_readonly "$bash_this_var_name" || bash::is_var_type_dict "$bash_this_var_name"
 		then
 			false
 		fi
-		! bash::is_var_type_list $bash_this_var_name || {
-			bash::is_var_ass $bash_this_var_name || {
+		! bash::is_var_type_list "$bash_this_var_name" || {
+			bash::is_var_ass "$bash_this_var_name" || {
 				bash_list_opts_dict[$bash_this_var_option]=$bash_this_var_name
 				continue
 			}
 			false
 		}
 		local -n bash_this_variable_ref=$bash_this_var_name
-		! bash::is_var_type_int $bash_this_var_name || {
+		! bash::is_var_type_int "$bash_this_var_name" || {
 			! [[ $bash_this_variable_ref == 0 ]] || {
 				bash_switch_opts_dict[$bash_this_var_option]=$bash_this_var_name
 				bash::undef_var_ref bash_this_variable_ref
@@ -240,7 +241,7 @@ bash::get_script_opts() {
 	while (( bash_arg_index < bash_args_count ))
 	do
 		local bash_this_script_option=${bash_arg_list[$bash_arg_index]}
-		! bash::is_dict_key_def bash_value_opts_dict $bash_this_script_option || {
+		! bash::is_dict_key_def bash_value_opts_dict "$bash_this_script_option" || {
 			local -n bash_this_variable_ref=${bash_value_opts_dict[$bash_this_script_option]}
 			local -i bash_this_script_option_value_index=$(( bash_arg_index + 1 ))
 			(( bash_this_script_option_value_index < bash_args_count ))
@@ -251,14 +252,14 @@ bash::get_script_opts() {
 			bash_arg_index=$(( bash_arg_index + 2 ))
 			continue
 		}
-		! bash::is_dict_key_def bash_switch_opts_dict $bash_this_script_option || {
+		! bash::is_dict_key_def bash_switch_opts_dict "$bash_this_script_option" || {
 			local -n bash_this_variable_ref=${bash_switch_opts_dict[$bash_this_script_option]}
 			bash_this_variable_ref=1
 			bash::undef_var_ref bash_this_variable_ref
 			bash_arg_index=$(( bash_arg_index + 1 ))
 			continue
 		}
-		! bash::is_dict_key_def bash_list_opts_dict $bash_this_script_option || {
+		! bash::is_dict_key_def bash_list_opts_dict "$bash_this_script_option" || {
 			local -n bash_this_variable_ref=${bash_list_opts_dict[$bash_this_script_option]}
 			bash_arg_index=$(( bash_arg_index + 1 ))
 			while (( bash_arg_index < bash_args_count )) && [[ ${bash_arg_list[$bash_arg_index]} != --* ]]
@@ -273,173 +274,6 @@ bash::get_script_opts() {
 	done
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 : <<'COMMENT'
-
-#!/usr/bin/bash
-source bashsible/sources/bash.bash
-bashsible_bash_exit_trap() {:;}
-
-user_name=''
-declare -i with_option=0
-declare -a groups=()
-
-bash::get_script_opts user_name groups with_option -- "$@"
-
-bash::is_var_ass user_name
-bash::is_var_ass groups
-(( with_option ))
-
-
-unset -n for every nameref after use inside a loop
-running other scripts from this script : bashsible/scripts/script-name
-keep lines with ( local , declare , ... ) and =$(cmd) seperate 
-
-
-run_cmd_timeout timeout_var_name 
-
-bash::run_cmd_timeout() {
-	(( $# >= 2 ))
-	local -a bash_arg_list=("$@")
-	local -n timeout_var_ref=$timeout_var_name
-	timeout_var_ref="${timeout_var_ref}s"
-	timeout $timeout_var_ref bash -c ...
-}
-
-for this_index in {1..10}
-do
-done
-
-bash::check_bash_syntax : bash -n
-
-bash::print_line : printf '%s\n'
-bash::read_text : read 1c
-bash::read_lines readarray
-bash::get_line_props line prop1 prop1 -----> print_line | read -d \n _ _ _ 
-
-bash::ensure
-bash::prompt
-bash::prompt_secret
-
-bash -n ???
-bash -O shopt_option ??
-
-validate values :
-@(pattern-list)
-
-
-slice_len = list_len - slice_index
-
-bash::get_list_slice list_name slice_index slice_len
-list_name
-slice_index
-slice_len
-${list_name[@]:slice_index:slice_length}
-
-bash::get_string_slice 
-var_name
-char_index
-slice_len
-${var_name:char_index:slice_len} 
-
-
-bash::get_module_api module_name
-compgen -A function network::
-
-
-bash::get_list_indexes
-${!list_name[@]}
-
-bash::get_dict_keys
-${!dict_name[@]}
-
-
-bash::get_str_len 
-${#var_name} 
-
-
-per_line
-
-replace string :
-${var_name//pattern/value}
-
-remove string :
-${var_name//pattern}
-
-comment line :
-${var_name/#pattern/#value}
-
-update value :
-${var_name/#pattern/value}
-
-*
-?
-^ -> #
-$ -> %
-
-
-
-${var//pat/rep}    # replace ALL matches
-${var//pat}        # delete ALL matches
-${var/#pat/rep}    # anchor: match at START 
-${var/%pat/rep}    # anchor: match at END
-${var/#pat}        # delete at start
-${var/%pat}        # delete at end
-
-
-
-${v//##[[:blank:]]/}
-
-
-
 COMMENT
-
 
