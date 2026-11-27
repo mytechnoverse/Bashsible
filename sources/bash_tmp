@@ -4,8 +4,15 @@
 : <<'COMMENT'
 
 
+* text=auto
 
-bashsible_bash_exit_trap() {:;}
+shellcheck -a ( --check-sourced ) for its rc file 
+-S warning ??
+
+SC2310
+SC2311
+SC2155
+SC2154
 
 user_name=''
 declare -i with_option=0
@@ -20,7 +27,120 @@ bash::is_var_ass groups
 
 unset -n for every nameref after use inside a loop
 running other scripts from this script : bashsible/scripts/script-name
-keep lines with ( local , declare , ... ) and =$(cmd) seperate 
+keep lines with ( local , declare , ... ) and =$(cmd) seperate
+
+get_dist_name() {
+  dist_name=$(source /etc/os-release && echo $ID)
+}
+
+get_dist_ver() {
+  dist_name=$(source /etc/os-release && echo $VERSION_ID)
+}
+
+get_dist_ver_name() {
+  dist_name=$(source /etc/os-release && echo $VERSION_CODENAME)
+}
+
+is_docker() {
+  [[ -f "/.dockerenv" ]]
+}
+
+is_podman() {
+  [[ -f "/run/.containerenv" ]]
+}
+
+is_container() {
+  is_docker || is_podman
+}
+
+is_virtual_machine() {
+  is_container && return 1 
+  sys_vendor_file_path="/sys/class/dmi/id/sys_vendor"
+  vendor_name="$(<"$sys_vendor_file_path")"
+  create_list virtualization_vendor_names 'QEMU' 'VMware, Inc.' 'Microsoft Corporation'
+  is_list_member virtualization_vendor_names vendor_name
+}
+
+is_physical() {
+  ! is_virtual_machine || return 1
+}
+
+
+is_terminal_interactive() {
+	[[ -e /dev/tty ]]
+}
+
+prompt_user() {
+	parameter_count 3 "$@"
+	declare -n bashutils_data_ref="$1"
+	declare bashutils_prompt_banner="$2"
+	declare bashutils_validator_func="$3"
+	check_condition_error "Script is not run interactively" is_terminal_interactive
+	declare bashutils_user_input=''
+	until $bashutils_validator_func && bashutils_data_ref="$bashutils_user_input" || return 1
+	do
+		printf '%s' "$bashutils_prompt_banner" >/dev/tty
+		read -r bashutils_user_input </dev/tty
+		printf '\n' >/dev/tty
+	done
+}
+
+prompt_user_password() {
+	parameter_count 2 "$@"
+	declare -n bashutils_password_ref="$1"
+	declare bashutils_prompt_banner="$2"
+	check_condition_error "Script is not run interactively" is_terminal_interactive
+	declare bashutils_user_input=''
+	until bashutils_check_password && bashutils_password_ref="$bashutils_user_input" || return 1
+	do
+		printf '%s' "$bashutils_prompt_banner" >/dev/tty
+		read -r -s bashutils_user_input </dev/tty
+		printf '\n' >/dev/tty
+	done
+}
+
+is_file_executable() {
+	parameter_count 1 "$@"
+	declare bashutils_file_path="$1"
+	[[ -x "$bashutils_file_path" ]]
+}
+
+set_file_executable() {
+	parameter_count 1 "$@"
+	declare bashutils_file_path="$1"
+	run_command_error "failed to make file ( ${bashutils_file_path} ) executable" chmod +x "$bashutils_file_path"
+}
+
+ensure_file_executable() {
+	parameter_count 1 "$@"
+	declare bashutils_file_path="$1"
+	is_file_executable "$bashutils_file_path" && return $bashutils_function_true
+	run_command set_file_executable "$bashutils_file_path"
+	check_condition_error "failed to make file ( ${bashutils_file_path} ) executable" is_file_readable "$bashutils_file_path"
+}
+
+assign_text() {
+	parameter_count 1 "$@"
+	declare -n variable_ref=$1
+    read -r -d '' variable_ref
+	variable_ref+=$'\n'
+}
+
+int_regex='^[0-9]+$'
+[[ $var_ref =~ $int_regex ]]
+
+
+bash::append_list_item
+
+bash::is_list_element
+
+bash::is_var_type_str
+
+bash::is_var_type_bool
+
+bash::is_var_val_int
+
+bash::is_var_val_bool
 
 
 run_cmd_timeout timeout_var_name 
@@ -113,10 +233,6 @@ ${var/%pat/rep}    # anchor: match at END
 ${var/#pat}        # delete at start
 ${var/%pat}        # delete at end
 
-
-
 ${v//##[[:blank:]]/}
-
-
 
 COMMENT

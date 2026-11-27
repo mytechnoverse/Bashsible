@@ -1,5 +1,4 @@
 #!/usr/bin/bash
-# shellcheck disable=SC2034
 set -o errtrace
 set -o errexit
 set -o nounset
@@ -273,7 +272,3 @@ bash::get_script_opts() {
 		false
 	done
 }
-
-: <<'COMMENT'
-COMMENT
-

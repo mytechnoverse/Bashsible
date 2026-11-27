@@ -1,97 +1,36 @@
 
- 
-set -Eeuo pipefail
+docker :
 
-error_handler() {
-    local line=$1
-    local exit_code=$2
-    local command="${BASH_COMMAND:-unknown}"
-    try_push "ERROR: command failed with exit code $exit_code"
-    if (( ${#ERROR_STACK[@]} > 0 )); then
-        local count=1
-        for (( i=${#ERROR_STACK[@]}-1; i>=0; i-- )); do
-            local func="${ERROR_STACK_FUNCS[$i]}"
-            local file="${ERROR_STACK_FILES[$i]}"
-            local line_num="${ERROR_STACK_LINES[$i]}"
-            local msg="${ERROR_STACK[$i]}"
-            
-            echo "[$count] ${func}() [${file}:${line_num}] : ${msg}" >&2
-            ((count++))
-        done
-    fi
-    
-    exit "$exit_code"
+remove below packages if present :
+
+docker.io docker-compose docker-doc docker-buildx podman-docker containerd runc
+
+
+https://download.docker.com/linux/debian/gpg
+
+https://download.docker.com/linux/debian
+
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo systemctl status docker
+
+sudo docker run hello-world
+
+/etc/docker/daemon.json :
+
+{
+	"registry-mirrors": [
+		"https://docker.example.com"
+	]
 }
 
-trap 'error_handler $LINENO $?' ERR
+docker info
 
-===================================================================
+sudo systemctl restart docker
 
-function positional argument data passing :
-
-1. scalar variables ( string , boolean , integer ): passed by value
-
-is_value_string
-is_vlaue_boolean
-is_value_integer
-
-2. array variables ( list , dictionary ) : passed by variable name
-
-is_variable_defined
-is_variable_list
-is_variable_dictionary
+sudo docker pull alpine
 
 
-circular pattern :
-
-1. 
-
-a() {
-  b
-}
-
-b() {
-  a
-}
-
-a
-
-2. 
-
-a() { :; }
-b() { :; }
-
-a() {
-  b
-}
-
-
-
-
-
-
-for_loop function
-
-validate_vlan_id
-validate_transport_port
-validate_address_ipv4
-validate_address_ipv6
-validate_domain_name
-
-
-====== Main Script Syntax :
-
-#!/bin/bash
-source /usr/lib/bashutils/bashutils.bash
-bashutils_init
-
-====== bashutils.bash :
-
-
-declare -g bashutils_version='1.0.0'
-declare -p bashutils_sourced &>/dev/null && return 0
-declare -g -a bashutils_error_list
-declare -g bashutils_sourced
 
 
 
@@ -134,558 +73,15 @@ parameter_count_minimum() {
   try "${parent_function_name} function requires at least ${minimum_parameter_count} parameter(s)" (( ! true_condition ))
 }
 
----------------------------------------------------------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-# assign_list variable_name 'abc' 'xyz'
-
-assign_list() {
-  parameter_count_minimum 2 "$@" || return "$false"
-  shift
-  declare "$reference_variable_option" list_variable_refrence="$1"
-  list_variable_refrence=("$@")
-}
-
-# is_variable_assigned variable_name
-
-is_variable_assigned() {
-  parameter_count 1 "$@" || return "$false"
-  shift
-  declare "$reference_variable_option" variable_reference="$1"
-  [[ -z "$variable_reference" ]] && {
-    bashutils_error_list+="$1 variable's value is not assigned"
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-# declare "$string_lowercase_variable_option" distribution_name
-# get_distribution_name distribution_name || return "$false"
-# debian
-
-get_distribution_name() {
-  parameter_count 1 "$@" || return "$false"
-  declare "$reference_variable_option" distribution_name="$1"
-  declare "$string_variable_option" os_release_file_path="/etc/os-release"
-  distribution_name="$(. "$os_release_file_path" && echo "$ID")"
-  [[ -n distribution_name ]]
-}
-
-# declare "$integer_variable_option" distribution_version
-# get_distribution_version distribution_version || return "$false"
-# 13
-
-get_distribution_version() {
-  parameter_count 1 "$@" || return "$false"
-  declare "$reference_variable_option" distribution_version="$1"
-  declare "$string_variable_option" os_release_file_path="/etc/os-release"
-  distribution_version="$(. "$os_release_file_path" && echo "$VERSION_ID")"
-}
-
-# declare "$integer_variable_option" distribution_version_name
-# get_distribution_version_name distribution_version_name || return "$false"
-# trixie
-
-get_distribution_version_name() {
-  parameter_count 1 "$@" || return "$false"
-  declare "$reference_variable_option" distribution_version_name="$1"
-  declare "$string_variable_option" os_release_file_path="/etc/os-release"
-  distribution_version_name="$(. /etc/os-release && echo "$VERSION_CODENAME")"
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-is_docker() {
-  [[ -f "/.dockerenv" ]]
-}
-
-is_podman() {
-  [[ -f "/run/.containerenv" ]]
-}
-
-is_container() {
-  is_docker || is_podman
-}
-
-is_virtual_machine() {
-  is_container && return 1 
-  sys_vendor_file_path="/sys/class/dmi/id/sys_vendor"
-  vendor_name="$(<"$sys_vendor_file_path")"
-  create_list virtualization_vendor_names 'QEMU' 'VMware, Inc.' 'Microsoft Corporation'
-  is_list_member virtualization_vendor_names vendor_name
-}
-
-is_physical() {
-  ! is_virtual_machine || return 1
-}
-
-# Init Guard
-
-bashutils_init_guard() {
-  declare -p bashutils_initialized &>/dev/null && return
-  declare -g bashutils_initialized
-}
-
-
-
-# is_variable_defined "$1" || return 1
-
-is_variable_defined() {
-  require_parameter "$@" || return 1
-  declare variable_name="$1"
-  if ! declare -p "$variable_name" &>/dev/null
-  then
-    bashutils_command_error="${variable_name} variable is not defined"
-    return 1
-  fi
-}
-
-is_variable_type_string() {
-  declare variable_name="$1"
-  require_parameter "$variable_name" || return 1
-  is_variable_defined "$variable_name" || return 1
-  declare_string_exclude_regex_pattern='^declare -[^[:space:]]*[aAi]'
-  if [[ $(declare -p "$variable_name" 2>/dev/null) =~ $declare_string_exclude_regex_pattern ]]
-  then
-    bashutils_command_error="${variable_name} variable type is not string"
-    return 1
-  fi
-}
-
-is_variable_string() {
-  declare variable_name="$1"
-  require_parameter "$variable_name" || return 1
-  is_variable_type_string "$variable_name" || return 1
-  declare -n variable_value="$variable_name"
-  [[ -n "$variable_value" ]] || {
-    bashutils_command_error="${variable_name} variable value ${variable_value} is not string"
-    return 1
-  }
-}
-
-declare -i is_enabled="$true"
-
-is_variable_boolean() {
-  declare variable_name="$1"
-
-}
-
-is_variable_type_integer() {
-  declare variable_name="$1"
-  require_parameter "$variable_name" || return 1
-  is_variable_defined "$variable_name" || return 1
-  declare_integer_include_regex_pattern='^declare -[^[:space:]]*i'
-  if [[ ! $(declare -p "$variable_name" 2>/dev/null) =~ $declare_integer_include_regex_pattern ]]
-  then
-    bashutils_command_error="${variable_name} variable type is not integer"
-    return 1
-  fi
-}
-
-is_value_integer() {
-  declare variable_name="$1"
-  require_parameter "$variable_name" || return 1
-  is_variable_type_integer "$variable_name" || return 1
-  declare -n variable_value="$variable_name"
-  integer_include_regex_pattern='^-?[0-9]+$'
-  if [[ ! "$variable_value" =~ $integer_include_regex_pattern ]]
-  then
-    bashutils_command_error="${variable_name} variable value ${variable_value} is not integer"
-    return 1
-  fi
-}
-
-
-
-
-
-
-
-is_variable_type_list() {
-  declare variable_name="$1"
-  require_parameter "$variable_name" || return 1
-  is_variable_defined "$variable_name" || return 1
-  declare_indexed_array_include_regex_pattern='^declare -[^[:space:]]*a'
-  if [[ ! $(declare -p "$variable_name" 2>/dev/null) =~ $declare_indexed_array_include_regex_pattern ]]
-  then
-    bashutils_command_error="${variable_name} variable type is not list ( indexed array )"
-    return 1
-  fi
-}
-
-is_variable_list()
-
-
-declare -n variable_value="$variable_name"
-(( ${#variable_value[@]} -gt 0 )) || {}
-
-
-is_variable_dictionary() {
-  declare variable_name="$1"
-  require_parameter "$variable_name" || return 1
-  is_variable_defined "$variable_name" || return 1
-  declare_associative_array_include_regex_pattern='^declare -[^[:space:]]*A'
-  if [[ ! $(declare -p "$variable_name" 2>/dev/null) =~ $declare_associative_array_include_regex_pattern ]]
-  then
-    bashutils_command_error="${variable_name} variable type is not dictionary ( associative array )"
-    return 1
-  fi
-}
-
-is_function_defined() {
-  declare function_name="$1"
-  require_parameter "$function_name" || return 1
-  if ! declare -F "$function_name" >/dev/null
-  then
-    bashutils_command_error="${function_name} function is not defined"
-    return 1
-  fi
-}
 
 ///////////////////////////////////////////////////////
 
-
-
-
-
-
-
-
-
-
-bashutils_array_length() {
-  declare -n array_name="$1"
-  echo "${#array_name[@]}"
-}
-
-# printf '\n  MESSAGE : %s !' "$bashutils_script_error" >&2
-
-# trap _bashutils_error_handler ERR
-
-bashutils_error_handler() {
-  declare -i bashutils_exit_code=$?
-  declare bashutils_error_message
-  if is_variable_assigned "$bashutils_script_error"
-  then
-    bashutils_error_message+=$(cat <<EOF
-      Script Error : $bashutils_script_error
-    EOF)
-  fi
-  if is_variable_assigned "$bashutils_command_error"
-  then
-    bashutils_error_message+=$(cat <<EOF
-      Command Error : $bashutils_script_error
-    EOF)
-  fi
-  if is_variable_assigned BASH_COMMAND
-  then
-    bashutils_error_message+=$(cat <<EOF
-      Bash Command  : $BASH_COMMAND
-    EOF)
-  fi
-
-
-
-
-  if [[ -n "$_bashutils_error_message" ]] && declare -p _bashutils_error_message &>/dev/null
-  then
-    
-  fi
-  (( _bashutils_error_code -eq 0 )) && return
-  if [[ -v BASH_COMMAND && -n "$BASH_COMMAND" ]]
-  then
-    printf '\n  COMMAND : %s' "$BASH_COMMAND" >&2
-  fi
-  [[ ! -v FUNCNAME ]] && return "$_bashutils_error_code"
-  declare -i _bashutils_functions_count
-  _bashutils_functions_count=${#FUNCNAME[@]}
-  (( $_bashutils_functions_count -lt 2 )) && return "$_bashutils_error_code"
-  [[ ! -v BASH_SOURCE || ! -v BASH_LINENO ]] && return "$_bashutils_error_code"
-  (( ${#BASH_SOURCE[@]} -lt _bashutils_functions_count || ${#BASH_LINENO[@]} -lt _bashutils_functions_count )) && return "$_bashutils_error_code"
-  printf '\n  Call Stack Trace :' >&2
-  declare -i bashutils_functions_index
-  for (( bashutils_functions_index=${#FUNCNAME[@]}-1; bashutils_functions_index -ge 1; bashutils_functions_index-- ))
-  do
-    printf '\n  %s() [%s:%s]' "${FUNCNAME[bashutils_functions_index]}" "${BASH_SOURCE[bashutils_functions_index]}" "${BASH_LINENO[bashutils_functions_index-1]}" >&2
-  done
-  printf '\n' >&2
-  return "$_bashutils_error_code"
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# bashutils_init
-
-_bashutils_init() {
-  _bashutils_init_guard
-  set -Eeuo pipefail
-  declare -g _bashutils_error_message
-  trap _bashutils_error_handler ERR
-}
-
-
-
-
-
-
-
-_require_parameter
-_require_function
-
-
-option_value=
-valid_values=("abc" "xyz")
-values_array=()
-
-
-
-
-option_name
-option_type
-option
-
-
-
-
-
-
-_require_parameter help_banner || exit 1
-
-
-# Create-Script-Template 
-
-Create-Script-Template :
-
-#!/usr/bin/bash
-source /usr/lib/bashutils/bashutils
-bashutils_init
-
-version="1.0.0"
-help_banner="--help-banner '--xyz --abc 123' --bool-options xyz --data-options abc --required-options abc --script-version 1.0.0"
-
-script_version=""
-script_help_banner=""
-
-data_options=()
-bool_options=()
-
-bashutils_options=$(getopt --longoptions help-banner:,bool-options:,data-options:,required-options:,script-version:,version,help -- "$@")
-eval set -- "$bashutils_options"
-
-while true
-do
-  case "$1" in
-    --help-banner)
-      help_banner="$2"
-      shift 2 ;;
-    --bool-options)
-      shift
-      while [[ $# -gt 0 && ${1:0:2} != "--" ]]
-      do
-        bool_options+=("$1")
-        shift
-      done ;;
-    ---data-options)
-      shift
-      while [[ $# -gt 0 && ${1:0:2} != "--" ]]
-      do
-        data_options+=("$1")
-        shift
-      done ;;
-    --required-options)
-      shift
-      while [[ $# -gt 0 && ${1:0:2} != "--" ]]
-      do
-        required_options+=("$1")
-        shift
-      done ;;
-    --script-version)
-      script_version="$2"
-      shift 2 ;;
-    --version)
-      printf '%s' "$version"
-      exit 0 ;;
-    --help)
-      printf '  %s %s\n' "$0" "$help_banner"
-      exit 0 ;;
-    --)
-      shift
-      break ;;
-    *)
-      bashutils_error_message="$0 SCRIPT INVALID OPTION $1"
-      exit 1 ;;
-  esac
-done
-
-script_template=$(cat <<EOF
-#!/usr/bin/bash
-source /usr/lib/bashutils/bashutils.bash
-bashutils_init
-
-version=$script_version
-help_banner=$script_help_banner
-
-
-
-
-EOF)
-
-script_options=""
-
-for bool_option in "${bool_options[@]}"
-do
-  script_options+="${bool_option},"
-  script_bool_variable_name="${bool_option//-/_}"
-  script_template+=$(cat <<EOF
-  $script_bool_variable_name=true
-  EOF)
-done
-
-for data_option in "${data_options[@]}"
-do
-  script_options+="${data_option}:,"
-  script_data_variable_name="${data_option//-/_}"
-  script_template+=$(cat <<EOF
-  $script_data_variable_name= ?????
-  EOF)
-done
-
-script_options="${script_options},version,help"
-
-script_options=$script_options
-
-
-
-
-
-
-\$
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 docker image : trixie-slim
-debootstrap image : --variant=minbase
-net install image : uncheck everything
-
-debootstrap and docker images only include packages with ( Essential: yes ) and their dependencies + apt package and its dependencies  
+docker images only include packages with ( Essential: yes ) and their dependencies + apt package and its dependencies  
 
 Use LEGO inside each website nginx container
 HTTP-01 Webroot Mapping : https://github.com/go-acme/lego
-
-====== Docker File :
-
-
-FROM debian:trixie-slim
-
-COPY nginxx.gpg /etc/apt/keyrings/nginxx.gpg
-COPY nginxx.sources /etc/apt/sources.list.d/nginxx.sources
-COPY legoo.sources /etc/apt/sources.list.d/legoo.sources
-
-RUN set -eu; \
-  DEBIAN_FRONTEND=noninteractive apt-get update; \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx ca-certificates legoo; \
-  rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /usr/share/nginx/html/.well-known/acme-challenge
-
-STOPSIGNAL SIGQUIT
-
-COPY entrypoint.sh /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-RUN chmod +x /entrypoint.sh
-
-====== entrypoint.sh :
-
-#!/bin/sh
-nginx -g "daemon on;"
-
-lego --email="your-email@example.com" --domains="yourdomain.com" --http --http.webroot="/usr/share/nginx/html" run
-
-while true
-do
-  sleep 86400
-  lego --email="your-email@example.com" --domains="yourdomain.com" --http --http.webroot="/usr/share/nginx/html" renew && nginx -s reload
-done
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+"https://github.com/go-acme/lego/releases/download/v${lego_version}/lego_v${lego_version}_linux_amd64.tar.gz"
 
 
 
@@ -716,12 +112,6 @@ cp ./gawk ./awkk/usr/local/bin/awkk
 chmod 755 ./awkk/usr/local/bin/awkk
 dpkg-deb -Zzstd --build --root-owner-group ./awkk awkk_5.4.0-1_amd64.deb
 rm -rf ./awkk
-
-===============================================================================================================================================================================================
-
-
-lego_version="5.2.2"
-curl -fsSL --compressed --connect-timeout 3 "https://github.com/go-acme/lego/releases/download/v${lego_version}/lego_v${lego_version}_linux_amd64.tar.gz"
 
 ===============================================================================================================================================================================================
 
@@ -759,64 +149,11 @@ rm -rf ./yqq
 
 Config-IP :
 
-#!/bin/bash
-set -Eeuo pipefail
-
-usage() {
-  printf ' %s --addr 192.168.1.2/24 --gateway 192.168.1.1\n' "$0"
-}
-
-INT_IP_CIDR=""
-INT_GATEWAY=""
-
-ARGS=$(getopt --long addr:,gateway:,help -- "$@")
-eval set -- "$ARGS"
-
-while true; do
-  case "$1" in
-    --addr)
-      INT_IP_CIDR="$2"
-      shift 2 ;;
-    --gateway)
-      INT_GATEWAY="$2"
-      shift 2 ;;
-    --help)
-      usage
-      exit 1 ;;
-    --)
-      shift
-      break ;;
-    *)
-      usage
-      exit 1 ;;
-  esac
-done
-
 INT_MAC=$( ip -j link | jq -r '[ .[] | select(.link_type == "ether") | .address ][0]')
-
-if [[ -z "$INT_MAC" ]]
-then
-  printf 'Ethernet Network Interface Not Found !\n' >&2
-  exit 1
-fi
-
 YQQ_QUERY='.Match.Name = "eth0" | .Network.DHCP = "no" | .Network.IPv6AcceptRA = "no"'
+YQQ_QUERY+=' | .Network.Address = strenv(INT_IP_CIDR)'
+YQQ_QUERY+=' | .Route[0].Destination = "0.0.0.0/0" | .Route[0].Gateway = strenv(INT_GATEWAY)'
 
-if [[ -n "$INT_IP_CIDR" ]]
-then
-  YQQ_QUERY+=' | .Network.Address = strenv(INT_IP_CIDR)'
-else
-  usage
-  exit 1
-fi
-
-if [[ -n "$INT_GATEWAY" ]]
-then
-  YQQ_QUERY+=' | .Route[0].Destination = "0.0.0.0/0" | .Route[0].Gateway = strenv(INT_GATEWAY)'
-else
-  usage
-  exit 1
-fi
 
 INT_CONF_PREFIX="/etc/systemd/network/10-eth0."
 INT_CONF_L2_PATH="${INT_CONF_PREFIX}link"
@@ -844,59 +181,8 @@ fi
 
 Install-Apt-Repo :
 
-#!/bin/bash
-set -Eeuo pipefail
-
-usage() {
-  printf ' %s --repo { debian | wazuh } --mirror { local | official }\n' "$0"
-}
-
-REPO_NAME=""
-REPO_MIRROR=""
-
-ARGS=$(getopt --long addr:,gateway:,help -- "$@")
-eval set -- "$ARGS"
-
-while true; do
-  case "$1" in
-    --repo)
-      REPO_NAME="$2"
-      shift 2 ;;
-    --mirror)
-      REPO_MIRROR="$2"
-      shift 2 ;;
-    --help)
-      usage
-      exit 1 ;;
-    --)
-      shift
-      break ;;
-    *)
-      usage
-      exit 1 ;;
-  esac
-done
-
 REPO_SUITES="stable"
 REPO_KEY="${REPO_NAME}-${REPO_MIRROR}"
-
-if [[ -n "$REPO_NAME" ]]
-then
-  case "$REPO_NAME" in
-    debian)
-      DEB_CN="$(. /etc/os-release && echo "$VERSION_CODENAME")"
-      ;;
-    wazuh)
-      ;;
-    *)
-      usage
-      exit 1
-      ;;
-  esac
-else
-  usage
-  exit 1
-fi
 
 if [[ -n "$REPO_MIRROR" ]]
 then
@@ -938,47 +224,9 @@ printf "\nTypes: deb\nURIs: ${REPO_URL}\nSuites: ${REPO_SUITES}\nComponents: mai
 
 Install-Script-Tools :
 
-#!/bin/bash
-set -Eeuo pipefail
 
-Config-NTP :
-
-Chrony
-
-Config-DNS :
-
-#!/bin/bash
-set -Eeuo pipefail
-
-usage() {
-  printf ' %s --srv1 1.1.1.1 [ --srv2 8.8.8.8 ]\n' "$0"
-}
-
-DNS_SRV1=""
-DNS_SRV2=""
-
-ARGS=$(getopt --long srv1:,srv2:,help -- "$@")
-eval set -- "$ARGS"
-
-while true; do
-  case "$1" in
-    --srv1)
-      DNS_SRV1="$2"
-      shift 2 ;;
-    --srv2)
-      DNS_SRV2="$2"
-      shift 2 ;;
-    --help|*)
-      usage
-      exit 1 ;;
-    --)
-      shift
-      break ;;
-  esac
-done
 
 PKG_LIST=("systemd-resolved")
-
 for PKG in "${PKG_LIST[@]}"
 do
   if ! dpkg -s "$PKG" >/dev/null 2>&1
@@ -1001,13 +249,6 @@ systemctl enable --now systemd-resolved >/dev/null
   fi
 
 
-
-if [[ -z "$DNS_SRV1" ]]
-then
-  printf 'DNS Server Not Specified !\n' >&2
-  exit 1
-fi
-
 sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
 
 control file :
@@ -1017,10 +258,6 @@ echo "Types: deb\nURIs: file:/opt/wazuh-local\nSuites: stable\nComponents: main\
 
 sudo apt update
 
-
-
-
-Download-Packages :
 
 
 Create-Repo :
@@ -1051,89 +288,7 @@ tar -cf wazuh-local.tar ./wazuh-local
 rm -rf ./wazuh-local
 
 ca-certificates , debian-archive-keyring deb packages 
-
-the vps should have LVM installed
-
-Download-File :
-
-#!/bin/bash
-set -Eeuo pipefail
-
-usage() {
-  printf ' %s --name google.html --url https://google.com/index.html [ --quiet ]\n' "$0"
-}
-
-WGET_FILE_NAME=""
-WGET_FILE_URL=""
-WGET_QUIET=false
-
-ARGS=$(getopt --long quiet:,name:,url:,help -- "$@")
-eval set -- "$ARGS"
-
-while true; do
-  case "$1" in
-    --quiet)
-      WGET_QUIET=true
-      shift ;;
-    --name)
-      WGET_FILE_NAME="$2"
-      shift 2 ;;
-    --url)
-      WGET_FILE_URL="$2"
-      shift 2 ;;
-    --help)
-      usage
-      exit 1 ;;
-    --)
-      shift
-      break ;;
-    *)
-      usage
-      exit 1 ;;
-  esac
-done
-
-if ! Check-Apps wget
-then
-  
-fi
-
-Check-Packages 
-
-WGET_OPTS="--secure-protocol=TLSv1_3 --tries=1 --timeout=5 "
-
-if [[ "$WGET_QUIET" == true ]]
-then
-  WGET_OPTS+="-q "
-else
-  WGET_OPTS+="-nv --show-progress "
-fi
-
-if [[ -n "$WGET_FILE_NAME" ]]
-then
-  WGET_OPTS+="-O $WGET_FILE_NAME "
-else
-  usage
-  exit 1
-fi
-
-if [[ -n "$WGET_FILE_URL" ]]
-then
-  WGET_OPTS+="$WGET_FILE_URL "
-else
-  usage
-  exit 1
-fi
-
-wget $WGET_OPTS
-
-
-
-
 debian packages : ca-certificates , debian-archive-keyring 
-
-
-debootstrap in vm 
 
 
 /usr/lib/wazuh-config-manager :
@@ -1174,37 +329,6 @@ done
 
 
 
-cat > config.yml <<'EOF'
-nodes:
-  indexer:
-    - name: wazuh-indexer
-      ip: "wazuh-indexer.internal"
-  server:
-    - name: wazuh-server
-      ip: "wazuh-server.internal"
-  dashboard:
-    - name: wazuh-dashboard
-      ip: "wazuh-dashboard.internal"
-EOF
-
-
-bash ./wazuh-certs-tool.sh -A
-
-rm -f ./wazuh-certificates-tool.log
-mv ./wazuh-certificates/wazuh-indexer.pem ./wazuh-certificates/indexer.pem
-mv ./wazuh-certificates/wazuh-indexer-key.pem ./wazuh-certificates/indexer-key.pem
-mv ./wazuh-certificates/wazuh-server.pem ./wazuh-certificates/filebeat.pem
-mv ./wazuh-certificates/wazuh-server-key.pem ./wazuh-certificates/filebeat-key.pem
-mv ./wazuh-certificates/wazuh-dashboard.pem ./wazuh-certificates/dashboard.pem
-mv ./wazuh-certificates/wazuh-dashboard-key.pem ./wazuh-certificates/dashboard-key.pem
-
-WAZUH_COMPONENTS=("wazuh-ca" "wazuh-indexer" "wazuh-server" "wazuh-dashboard")
-WAZUH_COMPONENTS_CERTS=(
-"./wazuh-certificates/root-ca.pem ./wazuh-certificates/root-ca.key"
-"./wazuh-certificates/root-ca.pem ./wazuh-certificates/indexer.pem ./wazuh-certificates/indexer-key.pem ./wazuh-certificates/admin.pem ./wazuh-certificates/admin-key.pem"
-"./wazuh-certificates/root-ca.pem ./wazuh-certificates/filebeat.pem ./wazuh-certificates/filebeat-key.pem"
-"./wazuh-certificates/root-ca.pem ./wazuh-certificates/dashboard.pem ./wazuh-certificates/dashboard-key.pem"
-)
 
 for WAZUH_COMP_Index in {0..3}
 do
@@ -1213,58 +337,11 @@ do
   tar -c -f - "${ARCHIVE_CERTS[@]}" | gpg --batch --pinentry-mode loopback --passphrase-fd 3 --symmetric --cipher-algo AES256 --use-ocb-sym --compress-algo none --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 -o "$ARCHIVE_NAME" 3<<<"$GPG_PASS"
 done
 
-rm -rf ./wazuh-certificates/
-
-# get-cert-hash cert_hash $cert_content ; echo $cert_hash
-
 get-cert-hash() {
   local -n cert_hash="$1"
   local cert_content="$2"
   cert_hash=$(openssl x509 -noout -fingerprint -sha256 -in <(printf '%s\n' "$cert_content") | cut -d= -f2)
 }
-
-get_wazuh_local_component_cert_hash()
-
-
-# verify_wazuh_remote_component_cert --local-component { indexer | server | dashboard } --remote-component --remote-domain --remote-cert-hash 
-
-
-local wazuh_local_component_name="$1"
-local wazuh_remote_component_domain_name="$2"
-local wazuh_remote_component_cert_hash="$3"
-
-local wazuh_component_names=("indexer" "server" "dashboard")
-local wazuh_component_storage_paths=("/etc/wazuh-indexer/certs" "/etc/filebeat/certs" "/etc/wazuh-dashboard/certs")
-local wazuh_component_cert_file_names=("indexer.pem" "filebeat.pem" "dashboard.pem")
-
-local wazuh_local_component_storage_path
-local wazuh_component_cert_file_name
-
-for wazuh_component_index in "${!wazuh_component_names[@]}"
-do
-  if [[ "${wazuh_component_names[wazuh_component_index]}" -eq "$wazuh_component_name" ]]
-  then
-    wazuh_component_storage_path="${wazuh_component_storage_paths[$wazuh_component_index]}"
-    wazuh_component_cert_file_name="${wazuh_component_cert_file_names[$wazuh_component_index]}"
-    break
-  fi
-done
-
-local wazuh_ca_cert_path="${wazuh_component_storage_path}/root-ca.pem"
-local wazuh_ca_cert_content="$(SUDO cat $wazuh_ca_cert_path)"
-
-local wazuh_component_cert_file_path="${wazuh_component_storage_path}/${wazuh_component_cert_file_name}"
-local wazuh_component_cert_file_content="$(SUDO cat $wazuh_component_cert_file_path)"
-
-
-
-
-
-
-
-
-
-
 
 timeout 5s openssl s_client -connect "${wazuh_component_domain_name}:443" -servername "$wazuh_component_domain_name" -verify_return_error -CAfile <(printf '%s\n' "$CA_PEM")  </dev/null 2>/dev/null 
 
@@ -1275,8 +352,6 @@ timeout 5s openssl s_client -connect "${wazuh_component_domain_name}:443" -serve
 
 
 
-
-if response=$(curl -fsS --connect-timeout 3 -k -u admin "$URL")
 
 
 
@@ -1301,148 +376,12 @@ if response=$(curl -fsS --connect-timeout 3 -k -u admin "$URL")
 
 
 systemd-detect-virt
-
-1. debootstrap only kernel , required pkgs , no cloud-init
-
-2. LUKS root , separate boot partition if needed
-
-3. sign kernel and modules , restrict initramfs scripts
-
-
-
-Remote attestation : TPM-backed ( Intel TDX )
-
-Sign kernel/initramfs and kernel modules yourself
-Verify signatures at boot
-
-LUKS full-disk encryption + remote unlock ( SSH in initramfs ) : protects data-at-rest
-
-Rescue mode ::::::::::::::
-
-list disks :
-
-lsblk
-fdisk -l
-
-( /dev/sda ???? )
-
-bios vs uefi ???
-
-BIOS :
-
-fdisk /dev/sda
-
-/dev/sda1 : boot partition ( 512 MB )
-/dev/sda2 : LUKS container
-
-
-
-( swap ????? )
-sudo apt install cryptsetup debootstrap binutils
-
-cryptsetup luksFormat /dev/sda2
-cryptsetup open /dev/sda2 cryptroot
-
-mkfs.ext4 /dev/mapper/cryptroot
-mkfs.ext4 /dev/sda1
-
-mount /dev/mapper/cryptroot /mnt
-mkdir /mnt/boot
-mount /dev/sda1 /mnt/boot
-
-debootstrap trixie /mnt https://deb.debian.org/debian
-
-
-download and extract debian net install iso , use file:/{ ISO PATH }/debian instead of https . check Packages file being present in the /debian subpath of iso   
-
-mount --bind /dev /mnt/dev
-mount --bind /proc /mnt/proc
-mount --bind /sys /mnt/sys
-mount --bind /run /mnt/run
-
-
-( mount --bind /dev /mnt/dev , mount -t proc proc /mnt/proc ) only ????
-
-chroot /mnt /bin/bash
-
 echo "debian" > /etc/hostname
-
 echo "127.0.0.1 localhost\n127.0.1.1 debian\n::1 localhost ip6-localhost ip6-loopback\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters" > /etc/hosts
 
 
-
-/etc/network/interfaces , /etc/resolv.conf , /etc/hostname , /etc/hosts
-
-echo "" > /etc/network/interfaces
-
-
-apt update
-apt install sudo openssh-server linux-image-amd64 grub-pc cryptsetup-initramfs
-
-( mbr : grub-pc | gpt : grub-efi-amd64 )
-
-/etc/crypttab :
-
-cryptroot /dev/sda2 none luks
-
-/etc/fstab :
-
-/dev/mapper/cryptroot / ext4 defaults 0 1
-/dev/sda1 /boot ext4 defaults 0 2
-
--------
-
-grub-install /dev/sda
-update-grub
-
-passwd
-adduser admin
-usermod -aG sudo admin
-
-/etc/ssh/sshd_config :
-
-PermitRootLogin no
-PasswordAuthentication yes
-
-systemctl enable ssh
-
-umount -R /mnt
-cryptsetup close cryptroot
-
-reboot
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-====== Bash Scripting :
-
-Syntax Checking   : bash -n { Script Name } 
-Trace & Debugging : bash -xv { Script Name }
-
-if -n : non empty string
-if -z : empty string
-
-===========================================================================================================================================================================================================
-
 sudo apt install whois
 mkpasswd -m yescrypt
-
 
 sudo useradd -m -U -s /bin/bash "$NEW_USER_NAME"
 sudo usermod -aG sudo "$NEW_USER_NAME"
@@ -1450,8 +389,11 @@ NEW_USER_PASS_HASH=''
 printf '%s:%s\n' "$NEW_USER_NAME" "$NEW_USER_PASS_HASH" | sudo chpasswd -e
 
 
+[[ "$(hostnamectl --static)" -ne "$NEW_HOSTNAME" ]] && hostnamectl hostname "$NEW_HOSTNAME"
 
-check to change for root in place
+CONF_HOSTS_CONTENT="127.0.0.1 localhost\n127.0.1.1 ${CONF_HOSTS_ENTRY}\n::1 localhost ip6-localhost ip6-loopback\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\n"
+
+
 
 ===========================================================================================================================================================================================================
 
@@ -1461,14 +403,14 @@ Config-Host-Name --mode { replace | update } --name srv1 [ --domain xyz.com ]
 
 CONFIG_HOSTNAME() {
   local NEW_HOSTNAME="$1"
-  if [[ "$(hostnamectl --static)" -ne "$NEW_HOSTNAME" ]]
+  if 
   then
-    SUDO hostnamectl hostname "$NEW_HOSTNAME"
+    SUDO 
   fi
 }
 
 CONF_HOSTS_GENERATE() {
-  CONF_HOSTS_CONTENT="127.0.0.1 localhost\n127.0.1.1 ${CONF_HOSTS_ENTRY}\n::1 localhost ip6-localhost ip6-loopback\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\n"
+  
 }
 
 CONF_HOSTS_UPDATE() {
@@ -1545,40 +487,7 @@ CONFIG_RESOLVE() {
 
 --domain xyz.com --dns-servers 172.16.1.1 1.1.1.1 8.8.8.8
 
-DEFAULT_RESOLV() {
-  local DNS_SRV_LIST=()
-  while [[ $# -gt 0 ]]
-  do
-    case "$1" in
-      --domain)
-        SITE_DOMAIN="$2"
-        shift 2
-        ;;
-      --dns-servers)
-        shift
-        while [[ $# -gt 0 && "${1:0:2}" != "--" ]]
-        do
-          DNS_SRV_LIST+=("$1")
-          shift
-        done
-        ;;
-    esac
-  done
-  CONF_WRITABLE "$RESOLV_PATH" || return 1
-  local RESOLV_CONTENT=""
-  if [[ -n "$SITE_DOMAIN" ]]
-  then
-    RESOLV_CONTENT+="search ${SITE_DOMAIN}\n"
-  fi
-  if [[ ${#DNS_SRV_LIST[@]} -gt 0 ]]
-  then
-    for DNS_SRV in "${DNS_SRV_LIST[@]}"
-    do
-      RESOLV_CONTENT+="nameserver ${DNS_SRV}\n"
-    done
-  fi
-  printf "%b" "$RESOLV_CONTENT" | SUDO tee "$RESOLV_PATH" >/dev/null
-}
+
 
 UPDATE_RESOLV() {
   CONF_READABLE "$RESOLV_PATH" || return 1
@@ -1974,9 +883,6 @@ INSTALL_PKG_LOCAL()
 
 
 
---allow-remove-essential
-
-
 
 sudo apt-get install --reinstall package_name ( redownloads binaries , keeps config files )
 sudo dpkg-reconfigure package_name ( runs package scripts again , regenerates config file )
@@ -1991,22 +897,12 @@ sudo apt-get autoremove --purge -y >/dev/null
 
 
 
-sudo apt-get install --reinstall openssh-server ( KEEPS CONNECTION )
-or
-sudo apt-get purge openssh-server
-sudo apt-get install openssh-server
-
 
 DEPENDANT_PKGS_LIST=($(apt-cache rdepends --installed libssl3t64 | sed -n 's/^[[:space:]]\+//p'))
 
 
 
 
-
-
-sudo apt-get purge openssh-server openssh-sftp-server openssh-client
-sudo apt-get autoremove --purge
-sudo apt-get install openssh-server openssh-sftp-server openssh-client
 
 
 UPGRADE_PKG() {
@@ -2061,21 +957,6 @@ PROVIDE_APPS() {
 ===========================================================================================================================================================================================================
 
 
-
-usage() {
-  local EXAMPLE_ARGS="make"
-  printf " %s ${EXAMPLE_ARGS}\n" "$0"
-}
-
-if [[ $# -eq 0 ]]
-then
-  usage
-  exit 1
-fi
-
-APPS_LIST=("make" "dig")
-PKGS_LIST=("build-essential" "dnsutils")
-PROVIDE_APPS APPS_LIST PKGS_LIST
 
 
 

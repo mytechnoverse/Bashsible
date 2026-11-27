@@ -7,7 +7,7 @@
 # https://github.com/koalaman/shellcheck/wiki/Ignore
 
 ```bash
-apt install shellcheck
+apt install shellcheck bash-completion
 shellcheck --version
 ```
 

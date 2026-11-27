@@ -1,2 +1,6 @@
-* text=auto
+*.tar binary
+*.zip binary
+*.md text eol=lf
 *.bash text eol=lf
+*.js text eol=lf
+scripts/** text eol=lf

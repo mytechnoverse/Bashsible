@@ -1,0 +1,4 @@
+external-sources=true
+source-path=SCRIPTDIR
+disable=SC2034
+enable=check-set-e-suppressed
